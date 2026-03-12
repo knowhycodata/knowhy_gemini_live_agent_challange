@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sessions  TestSession[]
+
+  @@map("users")
+}
+
+model TestSession {
+  id          String        @id @default(uuid())
+  userId      String        @map("user_id")
+  status      SessionStatus @default(IN_PROGRESS)
+  totalScore  Float?        @map("total_score")
+  riskLevel   RiskLevel?    @map("risk_level")
+  pdfUrl      String?       @map("pdf_url")
+  startedAt   DateTime      @default(now()) @map("started_at")
+  completedAt DateTime?     @map("completed_at")
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tests       TestResult[]
+
+  @@map("test_sessions")
+}
+
+model TestResult {
+  id          String   @id @default(uuid())
+  sessionId   String   @map("session_id")
+  testType    TestType @map("test_type")
+  rawData     Json     @map("raw_data")
+  score       Float
+  maxScore    Float    @map("max_score")
+  details     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  session     TestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, testType])
+  @@map("test_results")
+}
+
+enum SessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum RiskLevel {
+  LOW
+  MODERATE
+  HIGH
+}
+
+enum TestType {
+  VERBAL_FLUENCY
+  STORY_RECALL
+  VISUAL_RECOGNITION
+  ORIENTATION
+}

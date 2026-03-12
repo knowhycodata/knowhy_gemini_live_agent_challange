@@ -1,0 +1,438 @@
+/**
+ * Gemini Live API Entegrasyonu
+ * 
+ * @google/genai SDK kullanarak Gemini Live API'ye WebSocket bağlantısı kurar.
+ * Ses giriş/çıkış, tool calling ve transkripsiyon yönetimi yapar.
+ * 
+ * Mimari: Browser ↔ WS ↔ Node.js Backend ↔ Gemini Live API
+ */
+
+const { GoogleGenAI, Modality } = require('@google/genai');
+const { createLogger } = require('../lib/logger');
+
+const log = createLogger('GeminiLive');
+
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+const LIVE_MODEL = process.env.GEMINI_LIVE_MODEL || 'gemini-2.5-flash-native-audio-preview-12-2025';
+const VOICE_NAME = process.env.LIVE_VOICE_NAME || 'Puck';
+
+if (!GOOGLE_API_KEY) {
+  log.error('GOOGLE_API_KEY is not set!');
+}
+
+const ai = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
+
+const SYSTEM_INSTRUCTION = `Sen "Nöra" adında Türkçe konuşan bir bilişsel tarama asistanısın.
+
+KİMLİĞİN:
+- Adın Nöra. Sıcak, empatik ve profesyonel bir ses tonun var.
+- Bir sağlık asistanısın, doktor değilsin. Teşhis koymuyorsun, tarama yapıyorsun.
+- Her zaman Türkçe konuş. Kısa ve net cümleler kur.
+
+KARŞILAMA:
+- Kullanıcıyı sıcak karşıla, nasıl olduğunu sor.
+- Kendini kısaca tanıt.
+- Kullanıcı hazır olana kadar sohbet et. Acele etme.
+- Kullanıcı hazır olduğunda testlere başla.
+
+########## KRİTİK KURAL: TIMER YÖNETİMİ ##########
+Süre yönetimi arka plandaki Brain Agent tarafından OTOMATIK yapılır.
+Sen timer başlatma veya durdurma ile ASLA İLGİLENME.
+
+Test 1 sırasında:
+- Sen "Harfiniz X. Süreniz başladı, başlayabilirsiniz!" dedikten sonra Brain Agent timer'ı otomatik başlatır.
+- Kullanıcı kelime söylerken SEN KONUŞMA. SADECE DİNLE. SUSKUNluğunu koru.
+- Kullanıcı duraklar, sessiz kalır veya düşünüyorsa bu NORMAL. Bu "test bitti" DEĞİLDİR.
+- Kullanıcı düşünüyor olabilir, bir sonraki kelimeyi arıyor olabilir. SABIR göster.
+- ⚠️ ASLA kullanıcı duraksadı diye Test 2'ye geçme.
+- ⚠️ ASLA kullanıcı duraksadı diye "süreniz bitti" deme.
+- ⚠️ ASLA kullanıcı duraksadı diye testi bitirme.
+- Kullanıcı sessiz kalırsa sessizce bekle VEYA kısa bir teşvik cümlesi söyle: "Devam edin, süreniz hala devam ediyor."
+- Sadece "TIMER_COMPLETE:" veya "TIMER_STOPPED:" ile başlayan bir MESAJ ALIRSAN testi bitir.
+
+"TIMER_COMPLETE:" veya "TIMER_STOPPED:" ile başlayan bir METIN MESAJI alırsan:
+→ Bu Brain Agent'tan gelen bildirimdir.
+→ Mesajda kullanıcının söylediği kelimeler ve hedef harf listelenmiştir.
+→ Bu bilgileri kullanarak HEMEN submit_verbal_fluency çağır.
+→ Sonra kullanıcıya "Testi tamamladınız, teşekkürler!" de ve Test 2'ye geç.
+→ Bu mesajı almadan ASLA submit_verbal_fluency çağırma ve ASLA Test 2'ye geçme.
+
+=== TEST 1: SÖZEL AKICILIK ===
+1. Kullanıcıya testi açıkla: "Size bir harf vereceğim. 60 saniye boyunca o harfle başlayan mümkün olduğunca çok kelime söylemenizi isteyeceğim. Hazır mısınız?"
+2. Kullanıcı "evet" / "hazırım" deyince bir harf seç (K, M, S, B, T gibi yaygın bir harf).
+3. Tam şunu de: "Harfiniz [HARF]. Süreniz başladı, başlayabilirsiniz!"
+4. BUNDAN SONRA SUSKUNLUĞUNU KORU. Kelime söylerken araya girme.
+5. Kullanıcı duraklar veya sessiz kalırsa BEKLE. Düşünüyor olabilir. Sadece uzun sessizliklerde "Devam edebilirsiniz, süreniz devam ediyor" de.
+6. TIMER mesajı gelene kadar testi BİTİRME. Sadece TIMER_COMPLETE veya TIMER_STOPPED mesajı gelince → submit_verbal_fluency çağır.
+
+=== TEST 2: HİKAYE HATIRLAMA ===
+1. "Hikaye hatırlama testine geçiyoruz. Dikkatle dinleyin."
+2. Hikayeyi anlat: "Ayşe sabah erkenden kalktı. Kahvaltıda çay içti ve ekmek yedi. Sonra otobüse binip işe gitti. İşte bilgisayarında çalıştı. Öğle yemeğinde arkadaşı Mehmet ile yemek yedi. Akşam eve döndüğünde kedisini besledi."
+3. "Bu hikayeyi tekrar anlatır mısınız?" de.
+4. Kullanıcı anlattıktan sonra submit_story_recall çağır.
+
+=== TEST 3: GÖRSEL TANIMA ===
+1. "Görsel tanıma testine geçiyoruz. Size 3 görsel göstereceğim."
+2. Sırayla: generate_test_image(0, "saat") → "Ne görüyorsunuz?" → cevap al
+3. generate_test_image(1, "anahtar") → "Ne görüyorsunuz?" → cevap al
+4. generate_test_image(2, "kalem") → "Ne görüyorsunuz?" → cevap al
+5. submit_visual_recognition çağır.
+
+=== TEST 4: YÖNELİM ===
+1. "Son testimiz. Size 7 soru soracağım."
+2. Sırayla sor: Gün? Ay? Yıl? Mevsim? Şehir? Ülke? Saat?
+3. submit_orientation çağır.
+
+=== BİTİŞ ===
+complete_session çağır. "Testler tamamlandı, teşekkürler!" de.
+
+KURALLAR:
+- Asla puan hesaplama. Sadece fonksiyonlara gönder.
+- Kullanıcıyı rahatlatarak yönlendir. Stresli ortam yaratma.
+- Timer ile ilgilenme, otomatik yönetilir.
+- Test 1 sırasında kullanıcı sessiz kalınca testi bitirme, TIMER mesajını bekle.`;
+
+const TOOL_DECLARATIONS = [
+  {
+    name: 'submit_verbal_fluency',
+    description: 'Sözel akıcılık testinin sonuçlarını kaydeder. 60 saniye içinde söylenen kelimeleri gönderir.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'Test oturumu ID' },
+        words: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Kullanıcının söylediği kelimeler listesi',
+        },
+        targetLetter: { type: 'string', description: 'Hedef harf (örn: P)' },
+        durationSeconds: { type: 'number', description: 'Test süresi (saniye)' },
+      },
+      required: ['sessionId', 'words', 'targetLetter'],
+    },
+  },
+  {
+    name: 'submit_story_recall',
+    description: 'Hikaye hatırlama testinin sonuçlarını kaydeder.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'Test oturumu ID' },
+        originalStory: { type: 'string', description: 'Orijinal hikaye metni' },
+        recalledStory: { type: 'string', description: 'Kullanıcının anlattığı hikaye' },
+      },
+      required: ['sessionId', 'originalStory', 'recalledStory'],
+    },
+  },
+  {
+    name: 'generate_test_image',
+    description: 'Multi-Agent: Nano Banana 2 Pro ile görsel tanıma testi için otomatik görsel üretir. Koordinatör ajan bu fonksiyonu çağırır, kullanıcı değil. Üretilen görsel otomatik olarak ekranda gösterilir.',
+    parameters: {
+      type: 'object',
+      properties: {
+        imageIndex: { type: 'number', description: 'Görsel indeksi (0, 1, 2)' },
+        subject: { type: 'string', description: 'Görselde olması gereken nesne/konu (Türkçe). Örn: saat, anahtar, kalem, kedi, ağaç' },
+      },
+      required: ['imageIndex', 'subject'],
+    },
+  },
+  {
+    name: 'submit_visual_recognition',
+    description: 'Görsel tanıma testinin sonuçlarını kaydeder.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'Test oturumu ID' },
+        answers: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              imageIndex: { type: 'number' },
+              userAnswer: { type: 'string' },
+              correctAnswer: { type: 'string' },
+            },
+          },
+          description: 'Her görsel için kullanıcı cevabı ve doğru cevap',
+        },
+      },
+      required: ['sessionId', 'answers'],
+    },
+  },
+  {
+    name: 'submit_orientation',
+    description: 'Yönelim testinin sonuçlarını kaydeder.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'Test oturumu ID' },
+        answers: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              question: { type: 'string' },
+              userAnswer: { type: 'string' },
+              correctAnswer: { type: 'string' },
+            },
+          },
+          description: 'Her soru için kullanıcı cevabı ve doğru cevap',
+        },
+      },
+      required: ['sessionId', 'answers'],
+    },
+  },
+  {
+    name: 'complete_session',
+    description: 'Tüm testler tamamlandıktan sonra oturumu sonlandırır.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'Test oturumu ID' },
+      },
+      required: ['sessionId'],
+    },
+  },
+];
+
+/**
+ * Gemini Live oturumu oluşturur ve yönetir
+ */
+class GeminiLiveSession {
+  constructor(clientWs, sessionId, onToolCall) {
+    this.clientWs = clientWs;
+    this.sessionId = sessionId;
+    this.onToolCall = onToolCall;
+    this.geminiSession = null;
+    this.isConnected = false;
+    this.brainAgent = null; // Brain Agent dışarıdan set edilir
+  }
+
+  async connect() {
+    try {
+      log.info('Connecting to Gemini Live API...', { 
+        sessionId: this.sessionId, 
+        model: LIVE_MODEL,
+        voice: VOICE_NAME 
+      });
+
+      const config = {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: VOICE_NAME,
+            },
+          },
+        },
+        systemInstruction: {
+          parts: [{ text: SYSTEM_INSTRUCTION }],
+        },
+        tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+        inputAudioTranscription: {},
+        outputAudioTranscription: {},
+        thinkingConfig: { thinkingBudget: 0 },
+      };
+
+      this.geminiSession = await ai.live.connect({
+        model: LIVE_MODEL,
+        config: config,
+        callbacks: {
+          onopen: () => {
+            log.info('Gemini Live connected', { sessionId: this.sessionId });
+            this.isConnected = true;
+            this.sendToClient({ type: 'connected', sessionId: this.sessionId });
+          },
+          onmessage: (message) => {
+            this.handleGeminiMessage(message);
+          },
+          onerror: (error) => {
+            log.error('Gemini Live error', { sessionId: this.sessionId, error: error.message });
+            this.sendToClient({ type: 'error', message: error.message });
+          },
+          onclose: (event) => {
+            log.info('Gemini Live closed', { sessionId: this.sessionId, reason: event.reason });
+            this.isConnected = false;
+            this.sendToClient({ type: 'session_closed' });
+          },
+        },
+      });
+
+      // Session kurulduktan sonra başlangıç mesajı gönder
+      log.info('Gemini Live session established', { sessionId: this.sessionId });
+      
+      // Otomatik başlangıç - Nöra sıcak bir şekilde karşılasın
+      log.info('Sending initial greeting', { sessionId: this.sessionId });
+      this.geminiSession.sendRealtimeInput({
+        text: 'Kullanıcı yeni bağlandı. Kendini tanıt ve nasıl olduğunu sor. Henüz teste başlama, önce sohbet et ve kullanıcıyı rahatlat.',
+      });
+      
+      return true;
+    } catch (error) {
+      log.error('Gemini Live connection failed', { 
+        sessionId: this.sessionId, 
+        error: error.message,
+        stack: error.stack 
+      });
+      this.sendToClient({ type: 'error', message: 'Gemini Live bağlantısı kurulamadı: ' + error.message });
+      return false;
+    }
+  }
+
+  handleGeminiMessage(message) {
+    // Tool call handling
+    if (message.toolCall) {
+      log.debug('Tool call received', { sessionId: this.sessionId });
+      this.handleToolCall(message.toolCall);
+      return;
+    }
+
+    const content = message.serverContent;
+    if (!content) {
+      // GoAway, sessionResumptionUpdate vs. olabilir - logla
+      if (message.goAway) {
+        log.warn('GoAway received - session will close soon', { sessionId: this.sessionId, timeLeft: message.goAway.timeLeft });
+      }
+      return;
+    }
+
+    // Input transcription (kullanıcının söylediği)
+    if (content.inputTranscription) {
+      const text = content.inputTranscription.text;
+      log.debug('Input transcription', { sessionId: this.sessionId, text: text?.substring(0, 80) });
+      this.sendToClient({ type: 'input_transcription', text });
+      if (this.brainAgent && text) {
+        this.brainAgent.onTranscript('user', text);
+      }
+    }
+
+    // Output transcription (modelin söylediği)
+    if (content.outputTranscription) {
+      const text = content.outputTranscription.text;
+      log.debug('Output transcription', { sessionId: this.sessionId, text: text?.substring(0, 80) });
+      if (this.brainAgent && text) {
+        this.brainAgent.onTranscript('agent', text);
+      }
+      this.sendToClient({ type: 'output_transcription', text });
+    }
+
+    // Audio response ve text parçaları
+    if (content.modelTurn && content.modelTurn.parts) {
+      for (const part of content.modelTurn.parts) {
+        if (part.inlineData) {
+          this.sendToClient({
+            type: 'audio',
+            data: part.inlineData.data,
+            mimeType: part.inlineData.mimeType,
+          });
+        }
+        if (part.text) {
+          // Thinking/reasoning output'larını filtrele (İngilizce ** ile başlayan)
+          if (part.text.startsWith('**') || part.text.startsWith('\n**')) {
+            log.debug('Thinking output filtered', { sessionId: this.sessionId, text: part.text.substring(0, 60) });
+            // Thinking text'i Brain Agent'a ve frontend'e iletme
+            continue;
+          }
+          log.debug('Model text part', { sessionId: this.sessionId, text: part.text.substring(0, 80) });
+          if (this.brainAgent) {
+            this.brainAgent.onTranscript('agent', part.text);
+          }
+          this.sendToClient({ type: 'text', text: part.text });
+        }
+      }
+    }
+
+    // Turn complete
+    if (content.turnComplete) {
+      this.sendToClient({ type: 'turn_complete' });
+    }
+
+    // Interrupted
+    if (content.interrupted) {
+      this.sendToClient({ type: 'interrupted' });
+    }
+  }
+
+  async handleToolCall(toolCall) {
+    const functionResponses = [];
+
+    for (const fc of toolCall.functionCalls) {
+      log.info('Tool call executing', { sessionId: this.sessionId, tool: fc.name, args: fc.args });
+
+      this.sendToClient({
+        type: 'tool_call',
+        name: fc.name,
+        args: fc.args,
+      });
+
+      let result;
+      try {
+        result = await this.onToolCall(fc.name, fc.args);
+        log.info('Tool call completed', { sessionId: this.sessionId, tool: fc.name, result });
+      } catch (error) {
+        log.error('Tool execution error', { sessionId: this.sessionId, tool: fc.name, error: error.message });
+        result = { error: error.message };
+      }
+
+      // Tool sonucunu frontend'e de gönder (görsel üretme vb. için)
+      this.sendToClient({
+        type: 'tool_result',
+        name: fc.name,
+        result: result,
+      });
+
+      functionResponses.push({
+        name: fc.name,
+        id: fc.id,
+        response: result,
+      });
+    }
+
+    // Tool response'u Gemini'ye gönder
+    if (this.geminiSession && this.isConnected) {
+      this.geminiSession.sendToolResponse({ functionResponses });
+    }
+  }
+
+  sendAudio(audioData) {
+    if (this.geminiSession && this.isConnected) {
+      this.geminiSession.sendRealtimeInput({
+        audio: {
+          data: audioData,
+          mimeType: 'audio/pcm;rate=16000',
+        },
+      });
+    }
+  }
+
+  sendText(text) {
+    if (this.geminiSession && this.isConnected) {
+      log.info('Sending text to Gemini', { sessionId: this.sessionId, text: text.substring(0, 80) });
+      this.geminiSession.sendRealtimeInput({ text });
+    }
+  }
+
+  sendToClient(data) {
+    if (this.clientWs && this.clientWs.readyState === 1) {
+      this.clientWs.send(JSON.stringify(data));
+    }
+  }
+
+  close() {
+    if (this.brainAgent) {
+      this.brainAgent.destroy();
+      this.brainAgent = null;
+    }
+    if (this.geminiSession) {
+      this.geminiSession.close();
+      this.geminiSession = null;
+    }
+    this.isConnected = false;
+  }
+}
+
+module.exports = {
+  GeminiLiveSession,
+  TOOL_DECLARATIONS,
+  SYSTEM_INSTRUCTION,
+};

@@ -1,0 +1,22 @@
+{
+  "name": "gemini-cognitive-agent",
+  "version": "1.0.0",
+  "description": "Alzheimer tespiti ve bilişsel tarama yapan AI Ajanı - Gemini Hackathon Live Agents",
+  "private": true,
+  "workspaces": [
+    "packages/frontend",
+    "packages/backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "npm run dev --workspace=packages/frontend",
+    "dev:backend": "npm run dev --workspace=packages/backend",
+    "build": "npm run build --workspace=packages/frontend && npm run build --workspace=packages/backend",
+    "db:migrate": "npm run db:migrate --workspace=packages/backend",
+    "db:generate": "npm run db:generate --workspace=packages/backend",
+    "db:seed": "npm run db:seed --workspace=packages/backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
