@@ -296,7 +296,7 @@ class BrainAgent {
     const letter = this.targetLetter || 'P';
     const prefix = reason === 'süre doldu' ? 'TIMER_COMPLETE' : 'TIMER_STOPPED';
     
-    const msg = `${prefix}: ${reason === 'süre doldu' ? '60 saniyelik süre doldu.' : `Kullanıcı durdurmak istedi. ${elapsed} saniye geçti.`} Kullanıcının söylediği kelimeler: [${wordList}]. Toplam ${this.collectedWords.length} kelime. Şimdi submit_verbal_fluency fonksiyonunu çağır. words: [${this.collectedWords.map(w => `"${w}"`).join(', ')}], targetLetter: "${letter}", sessionId: "${this.sessionId}", durationSeconds: ${elapsed}`;
+    const msg = `${prefix}: ${reason === 'süre doldu' ? '60 saniyelik süre doldu.' : `Kullanıcı durdurmak istedi. ${elapsed} saniye geçti.`} Kullanıcının söylediği kelimeler: [${wordList}]. Toplam ${this.collectedWords.length} kelime. Şimdi submit_verbal_fluency fonksiyonunu çağır. words: [${this.collectedWords.map(w => `"${w}"`).join(', ')}], targetLetter: "${letter}", sessionId: "${this.sessionId}", durationSeconds: ${elapsed}. ⚠️ submit_verbal_fluency çağırdıktan sonra kullanıcıya tebrik et ve "İkinci teste geçmeye hazır mısınız?" diye sor. Kullanıcı onay verene kadar Test 2'ye GEÇME.`;
     
     this.sendTextToLive(msg);
     this.testPhase = 'VERBAL_FLUENCY_DONE';

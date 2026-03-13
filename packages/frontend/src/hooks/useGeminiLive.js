@@ -34,6 +34,8 @@ export function useGeminiLive() {
   const [error, setError] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [inputLevel, setInputLevel] = useState(0);
+  const [outputLevel, setOutputLevel] = useState(0);
   
   // Timer state
   const [timer, setTimer] = useState(null); // { duration, remaining, testType, active }
@@ -44,11 +46,44 @@ export function useGeminiLive() {
   const micStreamRef = useRef(null);
   const playerCtxRef = useRef(null);
   const playerNodeRef = useRef(null);
+  const micAnalyserRef = useRef(null);
+  const playerAnalyserRef = useRef(null);
+  const micDataArrayRef = useRef(null);
+  const playerDataArrayRef = useRef(null);
+  const audioMeterFrameRef = useRef(null);
 
   // State ref'ini güncel tut
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  const calculateLevel = useCallback((analyser, dataArray) => {
+    if (!analyser || !dataArray) return 0;
+    analyser.getByteTimeDomainData(dataArray);
+    let sumSquares = 0;
+    for (let i = 0; i < dataArray.length; i++) {
+      const normalized = (dataArray[i] - 128) / 128;
+      sumSquares += normalized * normalized;
+    }
+    const rms = Math.sqrt(sumSquares / dataArray.length);
+    return Math.min(1, rms * 3.2);
+  }, []);
+
+  useEffect(() => {
+    const tick = () => {
+      const micLevel = calculateLevel(micAnalyserRef.current, micDataArrayRef.current);
+      const speakerLevel = calculateLevel(playerAnalyserRef.current, playerDataArrayRef.current);
+      setInputLevel((prev) => prev * 0.68 + micLevel * 0.32);
+      setOutputLevel((prev) => prev * 0.68 + speakerLevel * 0.32);
+      audioMeterFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    audioMeterFrameRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (audioMeterFrameRef.current) cancelAnimationFrame(audioMeterFrameRef.current);
+    };
+  }, [calculateLevel]);
 
   // ─── Audio: Mikrofon ────────────────────────────────────────────
   const startMic = useCallback(async () => {
@@ -60,7 +95,11 @@ export function useGeminiLive() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
       const source = ctx.createMediaStreamSource(stream);
       const recorder = new AudioWorkletNode(ctx, 'pcm-recorder-processor');
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.85;
       source.connect(recorder);
+      source.connect(analyser);
 
       recorder.port.onmessage = (e) => {
         const ws = wsRef.current;
@@ -71,6 +110,8 @@ export function useGeminiLive() {
 
       recorderCtxRef.current = ctx;
       micStreamRef.current = stream;
+      micAnalyserRef.current = analyser;
+      micDataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
       setIsRecording(true);
       log.info('Mikrofon aktif');
     } catch (err) {
@@ -88,7 +129,10 @@ export function useGeminiLive() {
       recorderCtxRef.current.close().catch(() => {});
       recorderCtxRef.current = null;
     }
+    micAnalyserRef.current = null;
+    micDataArrayRef.current = null;
     setIsRecording(false);
+    setInputLevel(0);
   }, []);
 
   // ─── Audio: Oynatıcı ───────────────────────────────────────────
@@ -98,9 +142,15 @@ export function useGeminiLive() {
       const ctx = new AudioContext({ sampleRate: 24000 });
       await ctx.audioWorklet.addModule('/audio/pcm-player-processor.js');
       const node = new AudioWorkletNode(ctx, 'pcm-player-processor');
-      node.connect(ctx.destination);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.82;
+      node.connect(analyser);
+      analyser.connect(ctx.destination);
       playerCtxRef.current = ctx;
       playerNodeRef.current = node;
+      playerAnalyserRef.current = analyser;
+      playerDataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
       log.info('Player hazır');
     } catch (err) {
       log.error('Player hatası', { error: err.message });
@@ -122,6 +172,7 @@ export function useGeminiLive() {
   const clearAudioBuffer = useCallback(() => {
     if (playerNodeRef.current) playerNodeRef.current.port.postMessage('clear');
     setIsSpeaking(false);
+    setOutputLevel(0);
   }, []);
 
   // ─── Transcript helpers ─────────────────────────────────────────
@@ -134,7 +185,12 @@ export function useGeminiLive() {
         updated[updated.length - 1] = { ...last, text: last.text + text, partial: true };
         return updated;
       }
-      return [...prev, { role, text, timestamp: Date.now(), partial: role === 'agent' }];
+      const updated = [...prev];
+      if (updated.length > 0 && updated[updated.length - 1].partial) {
+        updated[updated.length - 1] = { ...updated[updated.length - 1], partial: false };
+      }
+      updated.push({ role, text, timestamp: Date.now(), partial: true });
+      return updated;
     });
   }, []);
 
@@ -206,8 +262,13 @@ export function useGeminiLive() {
         log.info('Tool call', { name: message.name });
         if (message.name === 'start_timer') setCurrentTest('verbal_fluency');
         else if (message.name === 'stop_timer') { /* timer stopped - handled by timer_stopped event */ }
-        else if (message.name === 'submit_verbal_fluency') setCurrentTest('verbal_fluency_done');
-        else if (message.name === 'submit_story_recall') setCurrentTest('story_recall_done');
+        else if (message.name === 'submit_verbal_fluency') {
+          setCurrentTest('verbal_fluency_done');
+          // Ajan kullanıcıdan onay alınca story_recall tool call ile doğal geçiş yapacak
+        }
+        else if (message.name === 'submit_story_recall') {
+          setCurrentTest('story_recall_done');
+        }
         else if (message.name === 'generate_test_image') {
           setImageGenerating(true);
           setGeneratedImage(null);
@@ -216,6 +277,7 @@ export function useGeminiLive() {
         else if (message.name === 'submit_visual_recognition') {
           setGeneratedImage(null);
           setCurrentTest('visual_recognition_done');
+          // Ajan kullanıcıdan onay alınca orientation'a doğal geçiş yapacak
         }
         else if (message.name === 'submit_orientation') setCurrentTest('orientation_done');
         else if (message.name === 'complete_session') {
@@ -245,6 +307,7 @@ export function useGeminiLive() {
         
       case 'timer_started':
         log.info('Timer started', { timerId: message.timerId, duration: message.durationSeconds });
+        setCurrentTest('verbal_fluency');
         setTimer({
           id: message.timerId,
           duration: message.durationSeconds,
@@ -379,6 +442,8 @@ export function useGeminiLive() {
       playerCtxRef.current.close().catch(() => {});
       playerCtxRef.current = null;
     }
+    playerAnalyserRef.current = null;
+    playerDataArrayRef.current = null;
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -391,6 +456,8 @@ export function useGeminiLive() {
     setImageGenerating(false);
     setError(null);
     setTimer(null);
+    setInputLevel(0);
+    setOutputLevel(0);
   }, [stopMic, clearAudioBuffer]);
   
   // Timer countdown efekti
@@ -429,6 +496,8 @@ export function useGeminiLive() {
     error,
     isRecording,
     isSpeaking,
+    inputLevel,
+    outputLevel,
     timer,
     connectAndStart,
     sendText,

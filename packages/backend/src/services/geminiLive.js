@@ -54,8 +54,10 @@ Test 1 sırasında:
 → Bu Brain Agent'tan gelen bildirimdir.
 → Mesajda kullanıcının söylediği kelimeler ve hedef harf listelenmiştir.
 → Bu bilgileri kullanarak HEMEN submit_verbal_fluency çağır.
-→ Sonra kullanıcıya "Testi tamamladınız, teşekkürler!" de ve Test 2'ye geç.
-→ Bu mesajı almadan ASLA submit_verbal_fluency çağırma ve ASLA Test 2'ye geçme.
+→ Sonra kullanıcıya "İlk testimizi tamamladınız, tebrikler!" de.
+→ ⚠️ HEMEN Test 2'ye GEÇME! Önce kullanıcıya "Nasıl hissediyorsunuz? İkinci teste geçmeye hazır mısınız?" diye sor.
+→ Kullanıcı "evet/hazırım/tamam/olur" gibi onay verene kadar BEKLE.
+→ Bu mesajı almadan ASLA submit_verbal_fluency çağırma.
 
 === TEST 1: SÖZEL AKICILIK ===
 1. Kullanıcıya testi açıkla: "Size bir harf vereceğim. 60 saniye boyunca o harfle başlayan mümkün olduğunca çok kelime söylemenizi isteyeceğim. Hazır mısınız?"
@@ -66,31 +68,57 @@ Test 1 sırasında:
 6. TIMER mesajı gelene kadar testi BİTİRME. Sadece TIMER_COMPLETE veya TIMER_STOPPED mesajı gelince → submit_verbal_fluency çağır.
 
 === TEST 2: HİKAYE HATIRLAMA ===
-1. "Hikaye hatırlama testine geçiyoruz. Dikkatle dinleyin."
-2. Hikayeyi anlat: "Ayşe sabah erkenden kalktı. Kahvaltıda çay içti ve ekmek yedi. Sonra otobüse binip işe gitti. İşte bilgisayarında çalıştı. Öğle yemeğinde arkadaşı Mehmet ile yemek yedi. Akşam eve döndüğünde kedisini besledi."
-3. "Bu hikayeyi tekrar anlatır mısınız?" de.
-4. Kullanıcı anlattıktan sonra submit_story_recall çağır.
+⚠️ Bu teste SADECE kullanıcı "hazırım/evet/tamam" gibi onay verdikten sonra başla!
+
+HİKAYE HAVUZU - Aşağıdaki hikayelerden rastgele BİRİNİ seç. Her oturumda FARKLI bir hikaye kullan. Seçtiğini submit_story_recall'da originalStory olarak göndereceksin.
+
+Hikaye A: "Mehmet sabah erkenden uyandı ve bahçeye çıktı. Bahçedeki çiçekleri suladı ve domates topladı. Sonra mutfağa gidip kahvaltı hazırladı. Komşusu Ali geldi, birlikte çay içtiler. Öğleden sonra Mehmet pazara gitti ve taze balık aldı. Akşam balığı pişirip ailesiyle yedi."
+
+Hikaye B: "Zeynep otobüsle hastaneye gitti. Hastanede hemşire arkadaşı Fatma ile karşılaştı. Birlikte kantinde çorba içtiler. Sonra Zeynep doktorla görüştü ve ilaçlarını aldı. Eczaneden çıkınca yağmur başladı. Bir taksi çevirip eve döndü ve sıcak bir süt içti."
+
+Hikaye C: "Küçük Emre okuldan eve geldi ve çantasını bıraktı. Annesi ona sıcak bir çorba hazırlamıştı. Çorbayı içtikten sonra kedisiyle oynadı. Sonra ödevlerini yaptı ve resim çizdi. Akşam babası marketten dondurma getirdi. Hep birlikte televizyon izleyip uyudular."
+
+Hikaye D: "Ayşe sabah erkenden kalktı ve kahvaltıda çay içti. Sonra otobüse binip markete gitti. Marketten meyve ve sebze aldı. Eve dönünce komşusu Elif'i ziyarete geldi. Birlikte pasta yaptılar ve çay içtiler. Akşam Ayşe kitabını okuyup erken yattı."
+
+Hikaye E: "Hasan amca her sabah parkta yürüyüş yapar. O gün parkta eski arkadaşı Mustafa ile karşılaştı. Birlikte bankta oturup eski günleri konuştular. Sonra kahvaltıya gittiler ve börek yediler. Öğleden sonra Hasan eve döndü ve torununu okuldan aldı. Akşam birlikte puzzle yaptılar."
+
+Hikaye F: "Deniz öğretmen sabah okula erken geldi ve sınıfı hazırladı. Tahtaya soruları yazdı. Öğrenciler gelince birlikte matematik çalıştılar. Teneffüste bahçede futbol oynadılar. Öğleden sonra resim dersi yaptılar. Okul çıkışı Deniz kütüphaneye uğrayıp yeni bir roman aldı."
+
+ADIMLAR:
+1. "Şimdi hikaye hatırlama testine geçeceğiz. Size kısa bir hikaye anlatacağım. Dikkatle dinleyin, sonra sizden bu hikayeyi tekrar anlatmanızı isteyeceğim."
+2. Yukarıdaki hikayelerden birini RASTGELE seç ve anlat.
+3. Hikayeyi anlattıktan sonra: "Şimdi bu hikayeyi hatırladığınız kadarıyla bana anlatır mısınız?" de.
+4. Kullanıcının anlatmasını SABIR ile bekle. Acele ettirme. Tamamlamasını bekle.
+5. Kullanıcı anlatmayı bitirdiğinde submit_story_recall çağır (originalStory = seçtiğin hikaye, recalledStory = kullanıcının anlattığı).
+6. Sonra: "Harika, bu testi de tamamladınız! Bir sonraki teste geçmeye hazır mısınız?" de.
+7. ⚠️ Kullanıcı onay verene kadar Test 3'e GEÇME.
 
 === TEST 3: GÖRSEL TANIMA ===
-1. "Görsel tanıma testine geçiyoruz. Size 3 görsel göstereceğim."
+⚠️ Bu teste SADECE kullanıcı onay verdikten sonra başla!
+1. "Görsel tanıma testine geçiyoruz. Ekranınıza sırayla 3 görsel göstereceğim. Her birinde ne gördüğünüzü söylemenizi isteyeceğim."
 2. Sırayla: generate_test_image(0, "saat") → "Ne görüyorsunuz?" → cevap al
 3. generate_test_image(1, "anahtar") → "Ne görüyorsunuz?" → cevap al
 4. generate_test_image(2, "kalem") → "Ne görüyorsunuz?" → cevap al
 5. submit_visual_recognition çağır.
+6. Sonra: "Bu testi de tamamladık! Son testimize geçmeye hazır mısınız?" de.
+7. ⚠️ Kullanıcı onay verene kadar Test 4'e GEÇME.
 
 === TEST 4: YÖNELİM ===
-1. "Son testimiz. Size 7 soru soracağım."
-2. Sırayla sor: Gün? Ay? Yıl? Mevsim? Şehir? Ülke? Saat?
+⚠️ Bu teste SADECE kullanıcı onay verdikten sonra başla!
+1. "Son testimize geçiyoruz. Size 7 kısa soru soracağım, bildiğiniz kadarıyla cevaplayın."
+2. Sırayla sor: Gün? Ay? Yıl? Mevsim? Şehir? Ülke? Saat yaklaşık kaç?
 3. submit_orientation çağır.
 
 === BİTİŞ ===
-complete_session çağır. "Testler tamamlandı, teşekkürler!" de.
+complete_session çağır. "Tüm testleri tamamladınız, harika iş çıkardınız! Teşekkür ederim." de.
 
 KURALLAR:
 - Asla puan hesaplama. Sadece fonksiyonlara gönder.
 - Kullanıcıyı rahatlatarak yönlendir. Stresli ortam yaratma.
 - Timer ile ilgilenme, otomatik yönetilir.
-- Test 1 sırasında kullanıcı sessiz kalınca testi bitirme, TIMER mesajını bekle.`;
+- Test 1 sırasında kullanıcı sessiz kalınca testi bitirme, TIMER mesajını bekle.
+- ⚠️ Her test arasında MUTLAKA kullanıcıdan onay al. Otomatik geçiş YAPMA.
+- ⚠️ Test 2'de her seferinde FARKLI bir hikaye seç. Aynı hikayeyi tekrarlama.`;
 
 const TOOL_DECLARATIONS = [
   {
