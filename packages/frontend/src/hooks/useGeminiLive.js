@@ -269,7 +269,17 @@ export function useGeminiLive() {
         else if (message.name === 'submit_story_recall') {
           setCurrentTest('story_recall_done');
         }
+        else if (message.name === 'start_visual_test') {
+          setImageGenerating(true);
+          setGeneratedImage(null);
+          setCurrentTest('visual_recognition');
+        }
+        else if (message.name === 'record_visual_answer') {
+          // Cevap kaydediliyor, sonraki görsel gelecek
+          log.info('record_visual_answer tool call', { args: message.args });
+        }
         else if (message.name === 'generate_test_image') {
+          // Legacy: eski akış — start_visual_test kullanılmalı
           setImageGenerating(true);
           setGeneratedImage(null);
           setCurrentTest('visual_recognition');
@@ -287,9 +297,25 @@ export function useGeminiLive() {
         break;
 
       case 'tool_result':
-        if (message.name === 'generate_test_image') {
+        if (message.name === 'start_visual_test') {
+          log.info('start_visual_test result', { success: message.result?.success });
+          // Görsel VisualTestAgent'tan visual_test_image event'i ile gelecek
+        }
+        else if (message.name === 'record_visual_answer') {
+          log.info('record_visual_answer result', { 
+            success: message.result?.success,
+            currentImage: message.result?.currentImage,
+            allComplete: message.result?.allComplete,
+          });
+          // Sonraki görsel visual_test_image event'i ile gelecek
+          if (message.result?.allComplete) {
+            setImageGenerating(false);
+          }
+        }
+        else if (message.name === 'generate_test_image') {
+          // Legacy handler
           setImageGenerating(false);
-          log.info('generate_test_image result', { 
+          log.info('generate_test_image result (legacy)', { 
             success: message.result?.success, 
             hasImage: !!message.result?.imageBase64,
             imageIndex: message.result?.imageIndex,
@@ -301,21 +327,80 @@ export function useGeminiLive() {
               imageIndex: message.result.imageIndex,
               generatedByAI: message.result.generatedByAI ?? true,
             });
-          } else if (message.result?.success) {
-            // Fallback: görsel üretilemedi ama test devam ediyor
-            setGeneratedImage({
-              data: null,
-              mimeType: null,
-              imageIndex: message.result.imageIndex,
-              generatedByAI: false,
-              correctAnswer: message.result.correctAnswer,
-              fallback: true,
-            });
           }
         }
         break;
 
+      // ── VisualTestAgent Event'leri ──────────────────────────────
+      case 'visual_test_started':
+        log.info('Visual test started', { totalImages: message.totalImages });
+        setCurrentTest('visual_recognition');
+        setImageGenerating(true);
+        setGeneratedImage(null);
+        break;
+
+      case 'visual_test_generating':
+        log.info('Visual test generating', { imageIndex: message.imageIndex });
+        setImageGenerating(true);
+        setGeneratedImage(null);
+        break;
+
+      case 'visual_test_image':
+        log.info('Visual test image received', { 
+          imageIndex: message.imageIndex, 
+          hasImage: !!message.imageBase64,
+          generatedByAI: message.generatedByAI,
+        });
+        setImageGenerating(false);
+        if (message.imageBase64) {
+          setGeneratedImage({
+            data: message.imageBase64,
+            mimeType: message.mimeType || 'image/jpeg',
+            imageIndex: message.imageIndex,
+            generatedByAI: message.generatedByAI ?? true,
+            totalImages: message.totalImages,
+          });
+        } else {
+          // Fallback
+          setGeneratedImage({
+            data: null,
+            mimeType: null,
+            imageIndex: message.imageIndex,
+            generatedByAI: false,
+            fallback: true,
+            totalImages: message.totalImages,
+          });
+        }
+        break;
+
+      case 'visual_test_answer_recorded':
+        log.info('Visual test answer recorded', { 
+          imageIndex: message.imageIndex,
+          answered: message.answeredCount,
+          total: message.totalImages,
+        });
+        // Sonraki görsel üretimi başlayacak
+        setImageGenerating(true);
+        break;
+
+      case 'visual_test_completed':
+        log.info('Visual test completed', { 
+          answered: message.answeredCount,
+          total: message.totalImages,
+        });
+        setImageGenerating(false);
+        setGeneratedImage(null);
+        break;
+
       case 'session_closed':
+        // Session kapandı — ama COMPLETED state'ine sadece complete_session ile geçilmeli
+        // "Request contains an invalid argument" gibi beklenmedik kapanmalarda
+        // kullanıcıya hata göster
+        if (stateRef.current !== SESSION_STATES.COMPLETED) {
+          log.warn('Session closed unexpectedly');
+          // Bağlantı hatası olarak işaretle ama mevcut verileri koru
+        }
+        break;
       case 'session_ended':
         setState(SESSION_STATES.COMPLETED);
         break;

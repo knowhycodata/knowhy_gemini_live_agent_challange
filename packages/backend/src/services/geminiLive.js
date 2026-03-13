@@ -421,30 +421,97 @@ class GeminiLiveSession {
       let result;
       try {
         result = await this.onToolCall(fc.name, fc.args);
-        log.info('Tool call completed', { sessionId: this.sessionId, tool: fc.name, result });
+        log.info('Tool call completed', { sessionId: this.sessionId, tool: fc.name, result: this._sanitizeForLog(result) });
       } catch (error) {
         log.error('Tool execution error', { sessionId: this.sessionId, tool: fc.name, error: error.message });
         result = { error: error.message };
       }
 
-      // Tool sonucunu frontend'e de gönder (görsel üretme vb. için)
+      // Tool sonucunu frontend'e TAM haliyle gönder (görsel verisi dahil)
       this.sendToClient({
         type: 'tool_result',
         name: fc.name,
         result: result,
       });
 
+      // Gemini'ye gönderilecek response'u sanitize et
+      // base64 görsel verisi gibi büyük payloadlar Gemini Live API'yi çökertiyor
+      // ("Request contains an invalid argument" → session close)
+      const sanitizedResult = this._sanitizeToolResponseForGemini(result);
+
       functionResponses.push({
         name: fc.name,
         id: fc.id,
-        response: result,
+        response: sanitizedResult,
       });
     }
 
-    // Tool response'u Gemini'ye gönder
+    // Sanitize edilmiş tool response'u Gemini'ye gönder
     if (this.geminiSession && this.isConnected) {
-      this.geminiSession.sendToolResponse({ functionResponses });
+      try {
+        this.geminiSession.sendToolResponse({ functionResponses });
+      } catch (error) {
+        log.error('sendToolResponse error', { sessionId: this.sessionId, error: error.message });
+      }
     }
+  }
+
+  /**
+   * Gemini Live API'ye gönderilecek tool response'u sanitize eder.
+   * base64 görsel verisi, büyük binary data gibi payloadları çıkarır.
+   * Gemini Live API ~100KB mesaj boyutu sınırına sahiptir.
+   */
+  _sanitizeToolResponseForGemini(result) {
+    if (!result || typeof result !== 'object') return result;
+
+    const sanitized = {};
+    for (const [key, value] of Object.entries(result)) {
+      // base64 görsel verisi içeren alanları çıkar
+      if (key === 'imageBase64' || key === 'imageData') {
+        sanitized[key] = value ? '[IMAGE_DATA_SENT_TO_FRONTEND]' : null;
+        continue;
+      }
+      // Çok büyük string değerleri kırp (50KB üstü)
+      if (typeof value === 'string' && value.length > 50000) {
+        sanitized[key] = value.substring(0, 100) + `... [${value.length} bytes truncated]`;
+        continue;
+      }
+      // İç içe objeleri de kontrol et
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        sanitized[key] = this._sanitizeToolResponseForGemini(value);
+        continue;
+      }
+      // Array'leri kontrol et - answers gibi normal boyutlu array'ler geçsin
+      if (Array.isArray(value)) {
+        sanitized[key] = value.map(item => {
+          if (item && typeof item === 'object') {
+            return this._sanitizeToolResponseForGemini(item);
+          }
+          return item;
+        });
+        continue;
+      }
+      sanitized[key] = value;
+    }
+    return sanitized;
+  }
+
+  /**
+   * Log için büyük verileri kırp
+   */
+  _sanitizeForLog(result) {
+    if (!result || typeof result !== 'object') return result;
+    const logSafe = {};
+    for (const [key, value] of Object.entries(result)) {
+      if (key === 'imageBase64' || key === 'imageData') {
+        logSafe[key] = value ? `[${typeof value === 'string' ? value.length : 0} bytes]` : null;
+      } else if (typeof value === 'string' && value.length > 200) {
+        logSafe[key] = value.substring(0, 200) + '...';
+      } else {
+        logSafe[key] = value;
+      }
+    }
+    return logSafe;
   }
 
   sendAudio(audioData) {
