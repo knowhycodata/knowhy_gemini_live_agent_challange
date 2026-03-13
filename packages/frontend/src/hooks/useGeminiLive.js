@@ -39,6 +39,11 @@ export function useGeminiLive() {
   
   // Timer state
   const [timer, setTimer] = useState(null); // { duration, remaining, testType, active }
+  
+  // Camera / Video Analysis state
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraCommand, setCameraCommand] = useState(null);
+  const [videoAnalysisResult, setVideoAnalysisResult] = useState(null);
 
   const wsRef = useRef(null);
   const stateRef = useRef(state);
@@ -427,6 +432,31 @@ export function useGeminiLive() {
         setTimer(prev => prev ? { ...prev, active: false, remaining: message.remaining || 0 } : null);
         break;
 
+      // ── Camera / Video Analysis Event'leri ─────────────
+      case 'camera_command':
+        log.info('Camera command received', { command: message.command, zoom: message.zoom });
+        setCameraCommand({ 
+          command: message.command, 
+          zoom: message.zoom,
+          params: message.params,
+          timestamp: Date.now(),
+        });
+        if (message.command === 'start') {
+          setCameraActive(true);
+        } else if (message.command === 'stop') {
+          setCameraActive(false);
+          setVideoAnalysisResult(null);
+        }
+        break;
+
+      case 'video_analysis_result':
+        log.info('Video analysis result', { 
+          expression: message.analysis?.facialExpression,
+          attention: message.analysis?.attentionLevel,
+        });
+        setVideoAnalysisResult(message.analysis);
+        break;
+
       case 'error':
         log.error('Server error', { message: message.message });
         setError(message.message);
@@ -531,6 +561,14 @@ export function useGeminiLive() {
     }
   }, [stopMic]);
 
+  // Video frame gönder
+  const sendVideoFrame = useCallback((frameBase64) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'video_frame', frameData: frameBase64 }));
+    }
+  }, []);
+
   const disconnect = useCallback(() => {
     stopMic();
     clearAudioBuffer();
@@ -558,6 +596,9 @@ export function useGeminiLive() {
     setTimer(null);
     setInputLevel(0);
     setOutputLevel(0);
+    setCameraActive(false);
+    setCameraCommand(null);
+    setVideoAnalysisResult(null);
   }, [stopMic, clearAudioBuffer]);
   
   // Timer countdown efekti
@@ -599,8 +640,12 @@ export function useGeminiLive() {
     inputLevel,
     outputLevel,
     timer,
+    cameraActive,
+    cameraCommand,
+    videoAnalysisResult,
     connectAndStart,
     sendText,
+    sendVideoFrame,
     endSession,
     disconnect,
   };

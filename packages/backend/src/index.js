@@ -12,9 +12,11 @@ const authRoutes = require('./routes/auth');
 const sessionRoutes = require('./routes/sessions');
 const testRoutes = require('./routes/tests');
 const { GeminiLiveSession } = require('./services/geminiLive');
-const { handleToolCall, registerGeminiSession, unregisterGeminiSession, registerVisualTestAgent, unregisterVisualTestAgent } = require('./services/toolHandler');
+const { handleToolCall, registerGeminiSession, unregisterGeminiSession, registerVisualTestAgent, unregisterVisualTestAgent, registerVideoAnalysisAgent, unregisterVideoAnalysisAgent, getVideoAnalysisAgent, registerDateTimeAgent, unregisterDateTimeAgent } = require('./services/toolHandler');
 const { BrainAgent } = require('./services/brainAgent');
 const { VisualTestAgent } = require('./services/visualTestAgent');
+const { VideoAnalysisAgent } = require('./services/videoAnalysisAgent');
+const { DateTimeAgent } = require('./services/dateTimeAgent');
 const prisma = require('./lib/prisma');
 
 const log = createLogger('Server');
@@ -165,6 +167,31 @@ wss.on('connection', async (ws, req) => {
             // Brain Agent'a VisualTestAgent referansını ver
             brainAgent.visualTestAgent = visualTestAgent;
             
+            // VideoAnalysisAgent oluştur - Test 4 mimik/göz hareketi analizi
+            const videoAnalysisAgent = new VideoAnalysisAgent(
+              testSessionId,
+              // sendToClient - frontend'e mesaj gönder
+              (data) => {
+                if (ws.readyState === 1) {
+                  ws.send(JSON.stringify(data));
+                }
+              },
+              // sendTextToLive - Live ajan'a text mesaj gönder
+              (text) => {
+                if (geminiSession) {
+                  geminiSession.sendText(text);
+                }
+              }
+            );
+            registerVideoAnalysisAgent(testSessionId, videoAnalysisAgent);
+            
+            // DateTimeAgent oluştur - Test 4 tarih/saat doğrulama
+            const dateTimeAgent = new DateTimeAgent(testSessionId);
+            registerDateTimeAgent(testSessionId, dateTimeAgent);
+            
+            // Brain Agent'a VideoAnalysisAgent referansını ver
+            brainAgent.videoAnalysisAgent = videoAnalysisAgent;
+            
             // Timer için Gemini session'ı register et
             registerGeminiSession(testSessionId, geminiSession);
 
@@ -191,12 +218,27 @@ wss.on('connection', async (ws, req) => {
             break;
           }
 
+          case 'video_frame': {
+            // Frontend'den gelen kamera frame'i → VideoAnalysisAgent'a ilet
+            if (testSessionId && message.frameData) {
+              const videoAgent = getVideoAnalysisAgent(testSessionId);
+              if (videoAgent && videoAgent.isActive) {
+                videoAgent.analyzeFrame(message.frameData).catch(err => {
+                  log.error('Video frame analiz hatası', { clientId, error: err.message });
+                });
+              }
+            }
+            break;
+          }
+
           case 'end_session': {
             if (geminiSession) {
               geminiSession.close();
               activeSessions.delete(testSessionId);
               unregisterGeminiSession(testSessionId);
               unregisterVisualTestAgent(testSessionId);
+              unregisterVideoAnalysisAgent(testSessionId);
+              unregisterDateTimeAgent(testSessionId);
               geminiSession = null;
             }
             ws.send(JSON.stringify({ type: 'session_ended' }));
@@ -232,6 +274,8 @@ wss.on('connection', async (ws, req) => {
       geminiSession.close();
       activeSessions.delete(testSessionId);
       unregisterVisualTestAgent(testSessionId);
+      unregisterVideoAnalysisAgent(testSessionId);
+      unregisterDateTimeAgent(testSessionId);
     }
   });
 
@@ -241,6 +285,8 @@ wss.on('connection', async (ws, req) => {
       geminiSession.close();
       activeSessions.delete(testSessionId);
       unregisterVisualTestAgent(testSessionId);
+      unregisterVideoAnalysisAgent(testSessionId);
+      unregisterDateTimeAgent(testSessionId);
     }
   });
 });

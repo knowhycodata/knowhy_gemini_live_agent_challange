@@ -9,6 +9,7 @@ import { useGeminiLive, SESSION_STATES } from '../hooks/useGeminiLive';
 import { createLogger } from '../lib/logger';
 import TranscriptPanel from '../components/TranscriptPanel';
 import GeneratedImagePanel from '../components/GeneratedImagePanel';
+import CameraPanel from '../components/CameraPanel';
 
 const log = createLogger('AgentSession');
 
@@ -308,6 +309,19 @@ export default function AgentSession() {
                   image={gemini.generatedImage}
                   isGenerating={gemini.imageGenerating}
                   onClose={() => {}}
+                />
+              </div>
+            )}
+
+            {/* Kamera paneli - Test 4 sırasında */}
+            {gemini.cameraActive && (
+              <div className="mt-6 mb-4 w-full max-w-sm mx-auto">
+                <CameraPanel
+                  isActive={gemini.cameraActive}
+                  cameraCommand={gemini.cameraCommand}
+                  analysisResult={gemini.videoAnalysisResult}
+                  onSendFrame={gemini.sendVideoFrame}
+                  onClose={null}
                 />
               </div>
             )}

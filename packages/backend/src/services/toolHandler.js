@@ -16,9 +16,17 @@ const { scoreVisualRecognition } = require('./scoring/visualRecognition');
 const { scoreOrientation } = require('./scoring/orientation');
 const { getImagePipeline } = require('./imageGenerator');
 const { getStaticTestImage } = require('./staticTestImages');
+const { VideoAnalysisAgent } = require('./videoAnalysisAgent');
+const { DateTimeAgent } = require('./dateTimeAgent');
 
 // Visual Test Agent referansları (session bazlı)
 const visualTestAgents = new Map(); // sessionId -> VisualTestAgent
+
+// Video Analysis Agent referansları (session bazlı)
+const videoAnalysisAgents = new Map(); // sessionId -> VideoAnalysisAgent
+
+// DateTime Agent referansları (session bazlı)
+const dateTimeAgents = new Map(); // sessionId -> DateTimeAgent
 
 function registerVisualTestAgent(sessionId, agent) {
   visualTestAgents.set(sessionId, agent);
@@ -32,6 +40,36 @@ function unregisterVisualTestAgent(sessionId) {
 
 function getVisualTestAgent(sessionId) {
   return visualTestAgents.get(sessionId);
+}
+
+// Video Analysis Agent kayıt işlemleri
+function registerVideoAnalysisAgent(sessionId, agent) {
+  videoAnalysisAgents.set(sessionId, agent);
+}
+
+function unregisterVideoAnalysisAgent(sessionId) {
+  const agent = videoAnalysisAgents.get(sessionId);
+  if (agent) agent.destroy();
+  videoAnalysisAgents.delete(sessionId);
+}
+
+function getVideoAnalysisAgent(sessionId) {
+  return videoAnalysisAgents.get(sessionId);
+}
+
+// DateTime Agent kayıt işlemleri
+function registerDateTimeAgent(sessionId, agent) {
+  dateTimeAgents.set(sessionId, agent);
+}
+
+function unregisterDateTimeAgent(sessionId) {
+  const agent = dateTimeAgents.get(sessionId);
+  if (agent) agent.destroy();
+  dateTimeAgents.delete(sessionId);
+}
+
+function getDateTimeAgent(sessionId) {
+  return dateTimeAgents.get(sessionId);
 }
 
 // Multi-Agent: Test görselleri Imagen 4 Fast ile otomatik üretilir
@@ -69,6 +107,16 @@ async function handleToolCall(toolName, args, clientWs = null, sessionId = null)
       return await handleVisualRecognition(args);
     case 'submit_orientation':
       return await handleOrientation(args);
+    case 'start_video_analysis':
+      return await handleStartVideoAnalysis(args);
+    case 'stop_video_analysis':
+      return await handleStopVideoAnalysis(args);
+    case 'send_camera_command':
+      return await handleSendCameraCommand(args);
+    case 'get_current_datetime':
+      return await handleGetCurrentDateTime(args);
+    case 'verify_orientation_answer':
+      return await handleVerifyOrientationAnswer(args);
     case 'complete_session':
       return await handleCompleteSession(args);
     default:
@@ -256,6 +304,115 @@ async function handleOrientation({ sessionId, answers }) {
   };
 }
 
+// ─── Video Analysis Agent Tool Handlers ──────────────────────────
+
+async function handleStartVideoAnalysis({ sessionId }) {
+  log.info('start_video_analysis çağrıldı', { sessionId });
+
+  const agent = videoAnalysisAgents.get(sessionId);
+  if (!agent) {
+    log.error('VideoAnalysisAgent bulunamadı', { sessionId });
+    return {
+      success: false,
+      message: 'Video analiz ajanı henüz hazır değil.',
+    };
+  }
+
+  return agent.startAnalysis();
+}
+
+async function handleStopVideoAnalysis({ sessionId }) {
+  log.info('stop_video_analysis çağrıldı', { sessionId });
+
+  const agent = videoAnalysisAgents.get(sessionId);
+  if (!agent) {
+    return { success: false, message: 'Video analiz ajanı bulunamadı.' };
+  }
+
+  const result = agent.stopAnalysis();
+  
+  // Analiz sonuçlarını veritabanına kaydet
+  if (result.summary) {
+    try {
+      await prisma.testResult.upsert({
+        where: { sessionId_testType: { sessionId, testType: 'VIDEO_ANALYSIS' } },
+        update: {
+          rawData: { analyses: result.analyses, summary: result.summary },
+          score: 0, // Video analizi skorlanmaz, gözlem amaçlıdır
+          maxScore: 0,
+          details: result.summary,
+        },
+        create: {
+          sessionId,
+          testType: 'VIDEO_ANALYSIS',
+          rawData: { analyses: result.analyses, summary: result.summary },
+          score: 0,
+          maxScore: 0,
+          details: result.summary,
+        },
+      });
+    } catch (dbError) {
+      log.error('Video analiz DB kayıt hatası', { sessionId, error: dbError.message });
+    }
+  }
+
+  return {
+    success: true,
+    message: `Video analizi tamamlandı. ${result.totalAnalyses} kare analiz edildi.`,
+    summary: result.summary,
+  };
+}
+
+async function handleSendCameraCommand({ sessionId, command, params }) {
+  log.info('send_camera_command çağrıldı', { sessionId, command });
+
+  const agent = videoAnalysisAgents.get(sessionId);
+  if (!agent) {
+    return { success: false, message: 'Video analiz ajanı bulunamadı.' };
+  }
+
+  return agent.sendCameraCommand(command, params || {});
+}
+
+// ─── DateTime Agent Tool Handlers ──────────────────────────────
+
+async function handleGetCurrentDateTime({ sessionId }) {
+  log.info('get_current_datetime çağrıldı', { sessionId });
+
+  let agent = dateTimeAgents.get(sessionId);
+  if (!agent) {
+    // Otomatik oluştur
+    agent = new DateTimeAgent(sessionId);
+    dateTimeAgents.set(sessionId, agent);
+  }
+
+  const dt = agent.getCurrentDateTime();
+  return {
+    success: true,
+    ...dt,
+    message: `Güncel tarih: ${dt.formattedDate}, Saat: ${dt.formattedTime}, Gün: ${dt.dayOfWeek}, Mevsim: ${dt.season}`,
+  };
+}
+
+async function handleVerifyOrientationAnswer({ sessionId, questionType, userAnswer, context }) {
+  log.info('verify_orientation_answer çağrıldı', { sessionId, questionType, userAnswer });
+
+  let agent = dateTimeAgents.get(sessionId);
+  if (!agent) {
+    agent = new DateTimeAgent(sessionId);
+    dateTimeAgents.set(sessionId, agent);
+  }
+
+  const verification = agent.verifyOrientationAnswer(questionType, userAnswer, context || {});
+  return {
+    success: true,
+    ...verification,
+    message: verification.isCorrect 
+      ? `Doğru cevap. (${verification.tolerance || 'Tam eşleşme'})` 
+      : `Yanlış cevap. Doğru: ${verification.correctAnswer}`,
+  };
+}
+
 async function handleCompleteSession({ sessionId }) {
   const testResults = await prisma.testResult.findMany({
     where: { sessionId },
@@ -296,5 +453,11 @@ module.exports = {
   registerVisualTestAgent,
   unregisterVisualTestAgent,
   getVisualTestAgent,
+  registerVideoAnalysisAgent,
+  unregisterVideoAnalysisAgent,
+  getVideoAnalysisAgent,
+  registerDateTimeAgent,
+  unregisterDateTimeAgent,
+  getDateTimeAgent,
   TEST_IMAGE_SUBJECTS 
 };

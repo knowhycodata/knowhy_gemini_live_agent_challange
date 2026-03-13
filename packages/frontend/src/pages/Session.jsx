@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Mic, MicOff, Brain, Volume2, Play, Loader2, Image, CheckCircle } from 'lucide-react';
 import api from '../lib/api';
 import { useGeminiLive, SESSION_STATES } from '../hooks/useGeminiLive';
+import CameraPanel from '../components/CameraPanel';
 
 const TEST_STEPS = [
   { id: 1, name: 'Sözel Akıcılık', key: 'verbal_fluency', description: 'Belirli bir harfle başlayan kelimeleri 60 saniye içinde söyleyin.' },
@@ -29,6 +30,10 @@ export default function Session() {
     error,
     isRecording,
     isSpeaking,
+    cameraActive,
+    cameraCommand,
+    videoAnalysisResult,
+    sendVideoFrame,
     connectAndStart,
     endSession,
     disconnect,
@@ -203,6 +208,19 @@ export default function Session() {
                   </div>
                 </div>
               ) : null}
+            </div>
+          )}
+
+          {/* Kamera paneli - Test 4 sırasında */}
+          {cameraActive && (
+            <div className="mb-8 max-w-sm mx-auto">
+              <CameraPanel
+                isActive={cameraActive}
+                cameraCommand={cameraCommand}
+                analysisResult={videoAnalysisResult}
+                onSendFrame={sendVideoFrame}
+                onClose={null}
+              />
             </div>
           )}
 

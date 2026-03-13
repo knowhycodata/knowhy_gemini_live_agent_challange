@@ -12,20 +12,23 @@ const testTypeLabels = {
 const riskConfig = {
   LOW: {
     label: 'Düşük Risk',
-    color: 'text-emerald-400',
-    bg: 'bg-emerald-400/10 border-emerald-400/20',
+    color: 'text-emerald-700',
+    badge: 'text-emerald-700 bg-emerald-50 border-emerald-100',
+    bg: 'bg-emerald-50 border-emerald-100',
     description: 'Bilişsel fonksiyonlarınız normal aralıkta görünüyor.',
   },
   MODERATE: {
     label: 'Orta Risk',
-    color: 'text-yellow-400',
-    bg: 'bg-yellow-400/10 border-yellow-400/20',
+    color: 'text-amber-700',
+    badge: 'text-amber-700 bg-amber-50 border-amber-100',
+    bg: 'bg-amber-50 border-amber-100',
     description: 'Bazı bilişsel alanlarda hafif düşüş gözlemlendi. Bir uzmana danışmanız önerilir.',
   },
   HIGH: {
     label: 'Yüksek Risk',
-    color: 'text-red-400',
-    bg: 'bg-red-400/10 border-red-400/20',
+    color: 'text-red-700',
+    badge: 'text-red-700 bg-red-50 border-red-100',
+    bg: 'bg-red-50 border-red-100',
     description: 'Önemli bilişsel düşüş işaretleri gözlemlendi. Lütfen en kısa sürede bir nörolog ile görüşün.',
   },
 };
@@ -45,8 +48,8 @@ export default function Results() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
-        <div className="animate-breathe w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600" />
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-10 h-10 rounded-full border-2 border-gray-200 border-t-gray-900 animate-spin" />
       </div>
     );
   }
@@ -56,24 +59,20 @@ export default function Results() {
   const risk = session.riskLevel ? riskConfig[session.riskLevel] : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-slate-900 to-gray-950 text-white">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/3 right-1/4 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl" />
-      </div>
+    <div className="min-h-screen bg-white text-gray-900">
 
       {/* Header */}
-      <header className="relative z-10 border-b border-white/5 px-6 py-4">
+      <header className="border-b border-gray-100 px-6 py-4 bg-white">
         <div className="container mx-auto flex items-center justify-between max-w-3xl">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">N</span>
+            <div className="w-8 h-8 rounded-lg bg-gray-900 flex items-center justify-center">
+              <span className="text-white text-sm font-semibold">N</span>
             </div>
-            <span className="text-sm font-medium text-white/70">Sonuç Raporu</span>
+            <span className="text-lg font-semibold tracking-tight text-gray-900">Sonuç Raporu</span>
           </div>
           <Link
             to="/dashboard"
-            className="flex items-center gap-1.5 text-sm text-white/30 hover:text-white/60 transition"
+            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
             Dashboard
@@ -81,55 +80,90 @@ export default function Results() {
         </div>
       </header>
 
-      <main className="relative z-10 container mx-auto px-6 py-10 max-w-3xl">
+      <main className="container mx-auto px-6 py-10 max-w-3xl">
         {/* Toplam Skor */}
-        <div className="glass rounded-2xl p-8 text-center mb-6">
-          <p className="text-xs text-white/35 mb-3 uppercase tracking-wider">Toplam Skor</p>
-          <p className="text-6xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-            {session.totalScore !== null ? Math.round(session.totalScore) : '—'}
-          </p>
-          <p className="mt-2 text-xs text-white/20">
-            {new Date(session.startedAt).toLocaleDateString('tr-TR', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
-            })}
-          </p>
+        <div className="bg-gray-50 rounded-2xl border border-gray-100 p-8 mb-6">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-[0.18em]">Tarama Özeti</p>
+              <h1 className="mt-2 text-2xl font-semibold text-gray-900">Bilişsel değerlendirme raporu</h1>
+              <p className="mt-2 text-sm text-gray-500">
+                {new Date(session.startedAt).toLocaleDateString('tr-TR', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+              </p>
+            </div>
+            <div className="min-w-[180px] rounded-2xl bg-white border border-gray-100 px-6 py-5 text-center shadow-sm">
+              <p className="text-[11px] font-medium text-gray-400 uppercase tracking-[0.18em]">Toplam Skor</p>
+              <p className="mt-2 text-5xl font-semibold text-gray-900">
+                {session.totalScore !== null ? Math.round(session.totalScore) : '—'}
+              </p>
+              <p className="mt-2 text-xs text-gray-400">100 üzerinden genel değerlendirme</p>
+            </div>
+          </div>
         </div>
 
         {/* Risk Durumu */}
         {risk && (
           <div className={`rounded-2xl border p-5 mb-6 ${risk.bg}`}>
-            <h3 className={`text-base font-semibold ${risk.color}`}>{risk.label}</h3>
-            <p className="mt-1 text-sm text-white/50">{risk.description}</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-[0.18em]">Risk Durumu</p>
+                <h3 className={`mt-2 text-lg font-semibold ${risk.color}`}>{risk.label}</h3>
+                <p className="mt-1 text-sm text-gray-600 leading-6">{risk.description}</p>
+              </div>
+              <span className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-medium ${risk.badge}`}>
+                {risk.label}
+              </span>
+            </div>
           </div>
         )}
 
         {/* Test Detayları */}
-        <h2 className="text-sm font-medium text-white/50 mb-4">Test Detayları</h2>
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-medium text-gray-400">Test Detayları</h2>
+          <span className="text-xs text-gray-400">Alan bazlı performans dağılımı</span>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
           {session.tests?.map((test) => {
             const pct = test.maxScore > 0 ? (test.score / test.maxScore) * 100 : 0;
             const barColor =
-              pct >= 75 ? 'bg-emerald-400' : pct >= 50 ? 'bg-yellow-400' : 'bg-red-400';
+              pct >= 75 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-rose-500';
 
             return (
-              <div key={test.id} className="glass rounded-xl p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-white/80">
-                    {testTypeLabels[test.testType] || test.testType}
-                  </h3>
-                  <span className="text-base font-bold text-white/90">
-                    {Math.round(test.score)}<span className="text-white/30">/{test.maxScore}</span>
+              <div key={test.id} className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                <div className="mb-4 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-400">Test</p>
+                    <h3 className="mt-2 text-base font-semibold text-gray-900">
+                      {testTypeLabels[test.testType] || test.testType}
+                    </h3>
+                  </div>
+                  <span className="text-lg font-semibold text-gray-900 whitespace-nowrap">
+                    {Math.round(test.score)}<span className="text-gray-300">/{test.maxScore}</span>
                   </span>
                 </div>
-                <div className="w-full bg-white/5 rounded-full h-1.5 mb-2">
+                <div className="w-full bg-gray-200 rounded-full h-2 mb-2 overflow-hidden">
                   <div
-                    className={`h-1.5 rounded-full transition-all ${barColor}`}
+                    className={`h-2 rounded-full transition-all ${barColor}`}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
-                <p className="text-[11px] text-white/25">%{Math.round(pct)}</p>
+                <div className="flex items-center justify-between text-xs text-gray-400">
+                  <span>Başarı oranı</span>
+                  <span>%{Math.round(pct)}</span>
+                </div>
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-sm text-gray-500 leading-6">
+                    {pct >= 75
+                      ? 'Bu alanda güçlü bir performans gözlemlendi.'
+                      : pct >= 50
+                        ? 'Bu alanda kısmi zorlanma görülüyor, takip önerilir.'
+                        : 'Bu alanda belirgin destek ihtiyacı olabilir, uzman görüşü değerlidir.'}
+                  </p>
+                </div>
               </div>
             );
           })}
@@ -138,7 +172,7 @@ export default function Results() {
         {/* PDF İndir */}
         <div className="mt-8 text-center">
           <button
-            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-full hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/20 transition-all text-sm"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 transition-all text-sm"
             onClick={() => alert('PDF raporu hazırlanıyor...')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
@@ -147,9 +181,9 @@ export default function Results() {
         </div>
 
         {/* Uyarı */}
-        <div className="mt-8 glass rounded-xl p-4">
-          <p className="text-[11px] text-white/25 text-center leading-relaxed">
-            <strong className="text-white/40">Önemli:</strong> Bu tarama bir tıbbi teşhis değildir. Sonuçlar yalnızca bilgilendirme amaçlıdır 
+        <div className="mt-8 rounded-2xl border border-gray-100 bg-gray-50 p-5">
+          <p className="text-xs text-gray-500 text-center leading-relaxed">
+            <strong className="text-gray-700">Önemli:</strong> Bu tarama bir tıbbi teşhis değildir. Sonuçlar yalnızca bilgilendirme amaçlıdır 
             ve profesyonel tıbbi değerlendirmenin yerini almaz. Endişeleriniz varsa lütfen bir sağlık kuruluşuna başvurun.
           </p>
         </div>

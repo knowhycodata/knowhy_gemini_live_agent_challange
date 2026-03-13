@@ -13,6 +13,8 @@
  *                Brain Agent (rule-based analiz)
  *                      ↕
  *                VisualTestAgent (Test 3 koordinatörü)
+ *                VideoAnalysisAgent (Test 4 mimik/göz analizi)
+ *                DateTimeAgent (Test 4 tarih/saat doğrulama)
  */
 
 const { createLogger } = require('../lib/logger');
@@ -25,6 +27,7 @@ class BrainAgent {
     this.sendToClient = sendToClient;
     this.sendTextToLive = sendTextToLive;
     this.visualTestAgent = null; // Dışarıdan set edilir
+    this.videoAnalysisAgent = null; // Dışarıdan set edilir
     
     // State
     this.testPhase = 'IDLE';
@@ -103,7 +106,13 @@ class BrainAgent {
       case 'VISUAL_TEST_ACTIVE':
         this._handleVisualTestActive(role, lowerText, text);
         break;
-      // VISUAL_TEST_DONE, ORIENTATION_ACTIVE, DONE - Brain Agent pasif
+      case 'VISUAL_TEST_DONE':
+        this._handlePostVisualTest(role, lowerText, agentBuf, userBuf);
+        break;
+      case 'ORIENTATION_ACTIVE':
+        this._handleOrientationActive(role, lowerText, text);
+        break;
+      // ORIENTATION_DONE, DONE - Brain Agent pasif
     }
   }
 
@@ -355,11 +364,68 @@ class BrainAgent {
     }
   }
 
+  /**
+   * Test 3 bittikten sonra Test 4'e geçişi takip et
+   */
+  _handlePostVisualTest(role, text, agentBuf, userBuf) {
+    if (role !== 'agent') return;
+    
+    // Test 4 (Yönelim) başladı mı?
+    const orientKeywords = [
+      'yönelim', 'son test', 'zaman ve mekan', 'tarih', 
+      'günümüz', 'sorular soracağım', 'kamera'
+    ];
+    if (this._containsAny(agentBuf, orientKeywords) || this._containsAny(text, orientKeywords)) {
+      log.info('Faz geçişi: VISUAL_TEST_DONE → ORIENTATION_ACTIVE', { sessionId: this.sessionId });
+      this.testPhase = 'ORIENTATION_ACTIVE';
+      
+      // Frontend'e Test 4 başladığını bildir
+      this.sendToClient({
+        type: 'test_phase_change',
+        phase: 'ORIENTATION_ACTIVE',
+        message: 'Yönelim testi başlıyor',
+      });
+    }
+  }
+
+  /**
+   * Test 4 aktifken - yönelim soruları sırasında
+   * Video analizi otomatik olarak VideoAnalysisAgent tarafından yönetilir
+   */
+  _handleOrientationActive(role, text, rawText) {
+    // Ajan test 4'ten pes etmeden geçmeye çalışırsa uyar
+    if (role === 'agent') {
+      const doneKeywords = [
+        'tüm testleri tamamladınız', 'oturumu sonlandır',
+        'testler tamamlandı', 'teşekkür ederim', 'oturum tamamlandı'
+      ];
+      if (this._containsAny(text, doneKeywords)) {
+        log.info('Faz geçişi: ORIENTATION_ACTIVE → ORIENTATION_DONE', { sessionId: this.sessionId });
+        this.testPhase = 'ORIENTATION_DONE';
+        
+        this.sendToClient({
+          type: 'test_phase_change',
+          phase: 'ORIENTATION_DONE',
+          message: 'Yönelim testi tamamlandı',
+        });
+        
+        // Gemini'ye complete_session çağırması için hatırlat
+        this.sendTextToLive(
+          'ORIENTATION_DONE: Tüm testler tamamlandı. Şimdi complete_session fonksiyonunu çağır. ' +
+          `sessionId: "${this.sessionId}". Bu fonksiyonu çağırdıktan sonra kullanıcıya teşekkür et ve vedalaş.`
+        );
+      }
+    }
+  }
+
   destroy() {
     if (this.timerTimeout) clearTimeout(this.timerTimeout);
     if (this.bufferResetTimeout) clearTimeout(this.bufferResetTimeout);
     if (this.visualTestAgent) {
       this.visualTestAgent = null;
+    }
+    if (this.videoAnalysisAgent) {
+      this.videoAnalysisAgent = null;
     }
     log.info('BrainAgent temizlendi', { sessionId: this.sessionId });
   }

@@ -116,11 +116,36 @@ AKIŞ:
 ⚠️ "VISUAL_TEST_NEXT:" ile başlayan mesajlar VisualTestAgent'tan gelir. Talimatlarına uy.
 ⚠️ Kullanıcı onay verene kadar Test 4'e GEÇME.
 
-=== TEST 4: YÖNELİM ===
+=== TEST 4: YÖNELİM (Multi-Agent + Video Analizi) ===
 ⚠️ Bu teste SADECE kullanıcı onay verdikten sonra başla!
-1. "Son testimize geçiyoruz. Size 7 kısa soru soracağım, bildiğiniz kadarıyla cevaplayın."
-2. Sırayla sor: Gün? Ay? Yıl? Mevsim? Şehir? Ülke? Saat yaklaşık kaç?
-3. submit_orientation çağır.
+
+⚠️ KRİTİK: Test 4, üç-ajan mimarisi ile çalışır!
+Sen (Nöra) = Konuşma Ajanı — kullanıcıyla konuşur, soruları sorar
+DateTimeAgent = Tarih/Saat Ajanı — doğru cevapları sağlar ve doğrulama yapar
+VideoAnalysisAgent = Görüntü Ajanı — kullanıcının mimik ve göz hareketlerini analiz eder
+
+AKIŞ:
+1. "Son testimize geçiyoruz. Bu testte size zaman ve mekan ile ilgili sorular soracağım."
+2. ÖNCE get_current_datetime çağır → Güncel tarih/saat bilgisini al.
+3. start_video_analysis çağır → Kullanıcının kamerasını aç ve mimik analizi başlat.
+4. Kullanıcıya "Bu test sırasında kameranızı açmanızı rica ediyorum. Yüz ifadelerinizi gözlemleyeceğiz." de.
+5. Sırayla şu soruları sor:
+   a) "Bugün günlerden ne?" → Cevabı al, verify_orientation_answer(questionType: 'day', userAnswer: cevap) çağır.
+   b) "Şu an hangi aydayız?" → verify_orientation_answer(questionType: 'month', userAnswer: cevap)
+   c) "Hangi yıldayız?" → verify_orientation_answer(questionType: 'year', userAnswer: cevap)
+   d) "Şu an hangi mevsimdeyiz?" → verify_orientation_answer(questionType: 'season', userAnswer: cevap)
+   e) "Hangi şehirdesiniz?" → verify_orientation_answer(questionType: 'city', userAnswer: cevap)
+   f) "Hangi ülkede yaşıyorsunuz?" → verify_orientation_answer(questionType: 'country', userAnswer: cevap)
+   g) "Saat şu an yaklaşık kaç?" → verify_orientation_answer(questionType: 'time', userAnswer: cevap)
+6. Tüm sorular bitince stop_video_analysis çağır → Mimik analizi sonuçlarını al.
+7. submit_orientation çağır (answers dizisine her soru için correctAnswer'ı DateTimeAgent'tan al).
+8. ⚠️ verify_orientation_answer'dan gelen doğru/yanlış bilgisini kullanıcıya söyleme! Sadece kaydet.
+
+KAMERA KOMUTLARI:
+- Kullanıcının yüzü görünmüyorsa: send_camera_command(command: 'center') çağır ve "Lütfen yüzünüzü kameraya doğru çevirin" de.
+- Kullanıcı çok uzaksa: send_camera_command(command: 'zoom_in') çağır ve "Biraz daha yakına gelin" de.
+- Kullanıcı çok yakınsa: send_camera_command(command: 'zoom_out') çağır ve "Biraz uzaklaşın" de.
+- "VIDEO_ANALYSIS:" ile başlayan mesajlar VideoAnalysisAgent'tan gelir. Kullanıcıyı nazikçe yönlendir.
 
 === BİTİŞ ===
 complete_session çağır. "Tüm testleri tamamladınız, harika iş çıkardınız! Teşekkür ederim." de.
@@ -131,7 +156,10 @@ KURALLAR:
 - Timer ile ilgilenme, otomatik yönetilir.
 - Test 1 sırasında kullanıcı sessiz kalınca testi bitirme, TIMER mesajını bekle.
 - ⚠️ Her test arasında MUTLAKA kullanıcıdan onay al. Otomatik geçiş YAPMA.
-- ⚠️ Test 2'de her seferinde FARKLI bir hikaye seç. Aynı hikayeyi tekrarlama.`;
+- ⚠️ Test 2'de her seferinde FARKLI bir hikaye seç. Aynı hikayeyi tekrarlama.
+- ⚠️ Test 4'te ÖNCE get_current_datetime ile doğru cevapları öğren, SONRA soruları sor.
+- ⚠️ Test 4'te verify_orientation_answer sonuçlarını kullanıcıya AÇIKLAMA. Sadece kaydet.
+- ⚠️ Kamera komutlarını nazik ve yönlendirici bir şekilde ver.`;
 
 const TOOL_DECLARATIONS = [
   {
@@ -233,6 +261,72 @@ const TOOL_DECLARATIONS = [
         },
       },
       required: ['sessionId', 'answers'],
+    },
+  },
+  {
+    name: 'start_video_analysis',
+    description: 'Test 4 başlangıcında kullanıcının kamerasını açar ve mimik/göz hareketi analizini başlatır. VideoAnalysisAgent koordinasyonunda çalışır.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'Test oturumu ID' },
+      },
+      required: ['sessionId'],
+    },
+  },
+  {
+    name: 'stop_video_analysis',
+    description: 'Video analizini durdurur ve sonuçları kaydeder. Test 4 sorularından sonra çağır.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'Test oturumu ID' },
+      },
+      required: ['sessionId'],
+    },
+  },
+  {
+    name: 'send_camera_command',
+    description: 'Kullanıcının kamerasına yönlendirme komutu gönderir. Yakınlaş, uzaklaş veya ortala.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'Test oturumu ID' },
+        command: { 
+          type: 'string', 
+          description: 'Kamera komutu: zoom_in (yakınlaş), zoom_out (uzaklaş), center (ortala)',
+          enum: ['zoom_in', 'zoom_out', 'center'],
+        },
+      },
+      required: ['sessionId', 'command'],
+    },
+  },
+  {
+    name: 'get_current_datetime',
+    description: 'DateTimeAgent aracılığıyla güncel tarih, saat, gün, ay, yıl ve mevsim bilgisini alır. Test 4 başında doğru cevapları öğrenmek için çağır.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'Test oturumu ID' },
+      },
+      required: ['sessionId'],
+    },
+  },
+  {
+    name: 'verify_orientation_answer',
+    description: 'DateTimeAgent aracılığıyla kullanıcının yönelim cevabını doğrular. Her soru sonrası çağır.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'Test oturumu ID' },
+        questionType: { 
+          type: 'string', 
+          description: 'Soru tipi',
+          enum: ['day', 'month', 'year', 'season', 'city', 'country', 'time'],
+        },
+        userAnswer: { type: 'string', description: 'Kullanıcının verdiği cevap' },
+      },
+      required: ['sessionId', 'questionType', 'userAnswer'],
     },
   },
   {
