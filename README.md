@@ -1,120 +1,152 @@
 # Nöra - Bilişsel Tarama AI Asistanı
 
-Alzheimer ve bilişsel bozulma riski için ön tarama yapan, gerçek zamanlı sesli-görsel etkileşimli AI ajanı.
+> **Gemini Hackathon 2026 - Live Agents Kategorisi**
+>
+> Alzheimer ve bilişsel bozulma riski için gerçek zamanlı sesli-görsel etkileşimli ön tarama AI ajanı.
 
-**Kategori:** Gemini Hackathon - **Live Agents**
+---
 
-## 1. Proje Özeti (Text Description)
+## 📋 Yarışma Teslim Linkleri
 
-Nöra, kullanıcı ile doğal konuşma akışında ilerleyen bir bilişsel tarama deneyimi sunar. Sistem:
+| Teslim | URL |
+|---|---|
+| **Public Repository** | https://github.com/knowhycodata/knowhy_gemini_live_agent_challange |
+| **Live Demo** | https://nora-frontend-806414321712.us-central1.run.app |
+| **Backend API** | https://nora-backend-806414321712.us-central1.run.app |
+| **Demo Video (<4 dk)** | *Kayıt sonrası eklenecek* |
+| **GCP Proof Video** | *Kayıt sonrası eklenecek* |
 
-- Gemini Live API ile gerçek zamanlı konuşur (ses alır, sesli yanıt verir, transcript üretir).
-- Test akışında görsel üretim (Imagen 4) kullanır.
-- Kamera frame'lerini analiz ederek odak, mimik, göz teması gibi gözlemler toplar.
-- Nihai puanlamayı deterministik backend algoritmalarıyla yapar (LLM'e bırakmaz).
+---
+
+## ✅ Yarışma Şartları Kanıtı
+
+### Zorunlu Gereksinimler
+
+| # | Gereksinim | Durum | Kanıt Dosyası |
+|---|---|---|---|
+| 1 | Gemini modeli kullanımı | ✅ | [`packages/backend/package.json`](packages/backend/package.json) - `@google/genai` |
+| 2 | GenAI SDK veya ADK | ✅ | [`packages/backend/src/services/geminiLive.js`](packages/backend/src/services/geminiLive.js) |
+| 3 | Live Agents (real-time audio/vision) | ✅ | [`packages/frontend/src/hooks/useGeminiLive.js`](packages/frontend/src/hooks/useGeminiLive.js) |
+| 4 | Multimodal giriş/çıkış | ✅ | Ses, metin, görsel üretim, kamera analizi |
+| 5 | En az bir GCP servisi | ✅ | Cloud Run, Cloud SQL, Secret Manager |
+| 6 | README spin-up instructions | ✅ | Aşağıda "Hızlı Başlangıç" bölümü |
+| 7 | Architecture Diagram | ✅ | Aşağıda "Architecture" bölümü |
+| 8 | Public Code Repository | ✅ | [GitHub Link](https://github.com/knowhycodata/knowhy_gemini_live_agent_challange) |
+
+### Bonus Gereksinimler
+
+| # | Bonus | Durum | Kanıt |
+|---|---|---|---|
+| 1 | IaC / Automated Deployment | ✅ | [`deploy-gcp.sh`](deploy-gcp.sh) + [`cloudbuild.yaml`](cloudbuild.yaml) |
+| 2 | Blog/Podcast/Video | ✅ | https://knowhyco.substack.com/p/when-we-forget-what-we-have-forgotten |
+| 3 | GDG Üyeliği | ❌ | - |
+
+---
+
+## 🎯 Proje Özeti
+
+Nöra, kullanıcı ile doğal konuşma akışında ilerleyen bir bilişsel tarama deneyimi sunar:
+
+- **Gemini Live API** ile gerçek zamanlı sesli konuşma (kesintiye dayanıklı)
+- **Imagen 4** ile görsel üretim ve tanıma testleri
+- **Kamera analizi** ile odak, mimik, göz teması gözlemleri
+- **Deterministik skorlama** - LLM hesaplamaz, backend algoritmaları hesaplar
 
 ### Özellikler
 
-- Canlı sesli konuşma ve kesintiye dayanıklı etkileşim
-- 4 adımlı bilişsel test akışı
-- Görsel üretim + görsel tanıma testi
-- Kamera tabanlı davranış/odak analizi
-- Sonuç ekranı ve test bazlı skorlar
-
-### Kullanılan Teknolojiler
-
-| Katman | Teknoloji |
+| Özellik | Açıklama |
 |---|---|
-| Frontend | React, Vite, TailwindCSS |
-| Backend | Node.js, Express, Prisma |
-| Veritabanı | PostgreSQL |
-| AI | Gemini Live API, Google GenAI SDK, Imagen 4 |
-| Dağıtım | Docker, Google Cloud Run |
+| 🎤 Canlı Sesli Konuşma | AudioWorklet + WebSocket ile düşük gecikmeli akış |
+| 🖼️ Görsel Test | Imagen 4 ile görsel üretim, tanıma testi |
+| 📷 Kamera Analizi | Gerçek zamanlı davranış/odak analizi |
+| 📊 Sonuç Ekranı | Test bazlı skorlar, risk durumu, PDF rapor |
+| 🔐 Güvenlik | JWT auth, rate-limit, input validation |
 
-### Veri Kaynakları
+---
 
-- Kullanıcının canlı ses girdisi (mikrofon)
-- Kullanıcının canlı kamera frame'leri (yalnızca test analizi için)
-- Uygulama içi statik/fallback görseller
-- Harici üçüncü parti dataset kullanılmaz
-
-### Bulgular ve Öğrenimler
-
-- Gerçek zamanlı voice UX için düşük gecikme kritik (AudioWorklet + websocket akışı tercih edildi).
-- Multimodal ajanlarda araç çağrısı sonuçlarını sanitize etmek oturum stabilitesi için önemli.
-- Skorlama mantığını backend'de deterministik tutmak, tutarlılık ve izlenebilirlik sağlar.
-
-## 2. Yarışma Şartları Eşleştirmesi
-
-| Şart | Durum | Kanıt |
-|---|---|---|
-| Gemini modeli kullanımı | Karşılanıyor | `@google/genai` bağımlılığı (`packages/backend/package.json`) |
-| GenAI SDK veya ADK | Karşılanıyor | Google GenAI SDK kullanımı (`packages/backend/src/services/geminiLive.js`) |
-| Live Agents (real-time audio/vision) | Karşılanıyor | Live websocket oturumu + audio/camera akışı (`packages/backend/src/index.js`, `packages/frontend/src/hooks/useGeminiLive.js`) |
-| Multimodal giriş/çıkış | Karşılanıyor | Ses, metin, görsel üretim, kamera analizi |
-| En az bir GCP servisi | Dağıtımda karşılanacak | Cloud Run (zorunlu dağıtım adımları aşağıda) |
-| README spin-up instructions | Karşılanıyor | Bu dosyadaki "Hızlı Başlangıç" ve "GCP Deploy" bölümleri |
-
-## 3. Architecture Diagram
+## 🏗️ Architecture Diagram
 
 ```mermaid
-flowchart LR
-    U["Kullanıcı (Web/Mobile Tarayıcı)"]
-    FE["Frontend (React + Vite)"]
-    BE["Backend API + WS Proxy (Express)"]
-    LIVE["Gemini Live API"]
-    IMG["Imagen 4 API"]
-    DB["PostgreSQL"]
-    CR["Google Cloud Run"]
-    SM["Secret Manager"]
-    SQL["Cloud SQL (PostgreSQL)"]
+flowchart TB
+    subgraph Client["👤 Client Layer"]
+        U["Kullanıcı"]
+        MIC["🎤 Mikrofon"]
+        CAM["📷 Kamera"]
+    end
 
-    U -->|"Ses / Kamera / Metin"| FE
+    subgraph GCP["☁️ Google Cloud Platform"]
+        subgraph CloudRun["Cloud Run"]
+            FE["🌐 Frontend\n(React + Nginx)"]
+            BE["🚀 Backend\n(Node.js + Express)"]
+        end
+        SQL["🗄️ Cloud SQL\n(PostgreSQL)"]
+        SM["🔐 Secret Manager"]
+    end
+
+    subgraph GoogleAI["🤖 Google AI"]
+        LIVE["Gemini Live API\nReal-time Audio"]
+        IMAGEN["Imagen 4\nImage Generation"]
+    end
+
+    U --> FE
+    MIC --> FE
+    CAM --> FE
     FE -->|"REST + WebSocket"| BE
-    BE -->|"Realtime audio/text/tool calls"| LIVE
-    BE -->|"Image generation"| IMG
-    BE -->|"Session + test records"| DB
-
-    FE -. deploy .-> CR
-    BE -. deploy .-> CR
-    DB -. managed option .-> SQL
-    BE -. secrets .-> SM
+    BE --> LIVE
+    BE --> IMAGEN
+    BE --> SQL
+    BE -.->|"Secrets"| SM
 ```
 
-## 4. Proje Yapısı
+---
+
+## 📁 Proje Yapısı
 
 ```text
 gemini_challenge/
 ├── packages/
-│   ├── frontend/
-│   └── backend/
-├── docker-compose.yml
-├── .env.example
+│   ├── frontend/          # React + Vite + TailwindCSS
+│   └── backend/           # Node.js + Express + Prisma
+├── deploy-gcp.sh          # ⭐ IaC: Otomatik GCP deploy scripti
+├── cloudbuild.yaml        # ⭐ IaC: Cloud Build CI/CD pipeline
+├── docker-compose.yml     # Lokal geliştirme
+├── .env.example           # Environment variables şablonu
 └── README.md
 ```
 
-## 5. Hızlı Başlangıç (Lokal)
+---
+
+## 🚀 Hızlı Başlangıç (Lokal)
 
 ### Ön Gereksinimler
 
-- Node.js 20+
-- Docker & Docker Compose
-- Google Gemini API Key
+| Gereksinim | Versiyon |
+|---|---|
+| Node.js | 20+ |
+| Docker & Docker Compose | Latest |
+| Google Gemini API Key | - |
 
 ### Kurulum
 
 ```bash
-# proje kökü
+# 1. Repo'yu klonla
+git clone https://github.com/knowhycodata/knowhy_gemini_live_agent_challange.git
+cd knowhy_gemini_live_agent_challange
+
+# 2. Environment variables ayarla
 cp .env.example .env
 # .env içine GOOGLE_API_KEY ve JWT_SECRET girin
 
+# 3. Bağımlılıkları kur ve veritabanını hazırla
 npm install
 npm run db:migrate
 npm run db:seed
+
+# 4. Uygulamayı başlat
 npm run dev
 ```
 
-Alternatif:
+### Alternatif: Docker Compose
 
 ```bash
 docker-compose up -d
@@ -122,27 +154,87 @@ docker-compose up -d
 
 ### Lokal URL'ler
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:3001`
-- Health: `http://localhost:3001/api/health`
+| Servis | URL |
+|---|---|
+| Frontend | http://localhost:5173 |
+| Backend | http://localhost:3001 |
+| Health Check | http://localhost:3001/api/health |
 
 ### Demo Hesap
 
-- E-posta: `demo@nora.ai`
-- Şifre: `demo123`
+| Alan | Değer |
+|---|---|
+| E-posta | `demo@nora.ai` |
+| Şifre | `demo123` |
 
-## 6. Google Cloud Deploy (Backend Proof İçin Önerilen Akış)
+---
 
-Bu bölüm, yarışmanın "Google Cloud deployment proof" kriterini karşılamak için doğrudan uygulanabilir bir akıştır.
+## ☁️ Google Cloud Deploy
 
-### 6.1 GCP Hazırlık
+> **Yarışma Şartı:** Backend Google Cloud üzerinde çalışmalıdır.
+>
+> **Kanıt:** [Live Demo](https://nora-frontend-806414321712.us-central1.run.app) + [Backend Health](https://nora-backend-806414321712.us-central1.run.app/api/health)
+
+### Yöntem 1: Otomatik Deploy Script (⭐ Bonus: IaC)
+
+**Dosya:** [`deploy-gcp.sh`](deploy-gcp.sh)
+
+Tek komutla tüm GCP altyapısını kurar:
+
+```bash
+# 1. Ön gereksinimler
+gcloud auth login
+
+# 2. Env vars ayarla
+export GCP_PROJECT_ID="YOUR_PROJECT_ID"
+export GCP_REGION="us-central1"
+export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
+export JWT_SECRET="YOUR_JWT_SECRET"
+export DB_PASSWORD="STRONG_DB_PASSWORD"
+
+# 3. Deploy scriptini çalıştır
+bash deploy-gcp.sh
+```
+
+Script şunları otomatik yapar:
+- GCP API'lerini etkinleştirir
+- Artifact Registry oluşturur
+- Cloud SQL (PostgreSQL 16) kurar
+- Secret Manager'a anahtarları yazar
+- Backend ve Frontend Docker image'lerini build eder
+- Her iki servisi Cloud Run'a deploy eder
+- CORS ayarlarını günceller
+- Health check yapar
+
+### Yöntem 2: Cloud Build CI/CD (⭐ Bonus: IaC)
+
+**Dosya:** [`cloudbuild.yaml`](cloudbuild.yaml)
+
+GitHub'dan otomatik trigger ile CI/CD pipeline:
+
+```bash
+# Manuel tetikleme
+gcloud builds submit --config=cloudbuild.yaml .
+
+# Veya trigger oluşturma (GitHub repo bağlandıktan sonra)
+gcloud builds triggers create github \
+  --repo-name=YOUR_REPO \
+  --repo-owner=YOUR_GITHUB_USER \
+  --branch-pattern="^main$" \
+  --build-config=cloudbuild.yaml
+```
+
+### Yöntem C: Manuel Adım Adım Deploy
+
+<details>
+<summary>Manuel adımları görmek için tıklayın</summary>
+
+#### 6.1 GCP Hazırlık
 
 ```bash
 export PROJECT_ID="YOUR_PROJECT_ID"
 export REGION="us-central1"
 export REPO_NAME="nora-repo"
-export IMAGE_NAME="nora-backend"
-export SERVICE_NAME="nora-backend"
 
 gcloud auth login
 gcloud config set project $PROJECT_ID
@@ -155,18 +247,23 @@ gcloud services enable \
   sqladmin.googleapis.com
 ```
 
-### 6.2 Artifact Registry + Image Build
+#### 6.2 Artifact Registry + Image Build
 
 ```bash
 gcloud artifacts repositories create $REPO_NAME \
   --repository-format=docker \
   --location=$REGION
 
+# Backend
 gcloud builds submit ./packages/backend \
-  --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:latest
+  --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/nora-backend:latest
+
+# Frontend
+gcloud builds submit ./packages/frontend \
+  --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/nora-frontend:latest
 ```
 
-### 6.3 Cloud SQL (PostgreSQL) Oluşturma
+#### 6.3 Cloud SQL (PostgreSQL) Oluşturma
 
 ```bash
 gcloud sql instances create nora-pg \
@@ -180,7 +277,7 @@ gcloud sql users create nora_user --instance=nora-pg --password='CHANGE_ME_STRON
 CONNECTION_NAME=$(gcloud sql instances describe nora-pg --format='value(connectionName)')
 ```
 
-### 6.4 Secret Manager
+#### 6.4 Secret Manager
 
 ```bash
 echo -n 'YOUR_GOOGLE_API_KEY' | gcloud secrets create GOOGLE_API_KEY --data-file=-
@@ -188,55 +285,63 @@ echo -n 'YOUR_JWT_SECRET' | gcloud secrets create JWT_SECRET --data-file=-
 echo -n 'YOUR_GOOGLE_API_KEY' | gcloud secrets create GEMINI_IMAGE_API_KEY --data-file=-
 ```
 
-### 6.5 Cloud Run Deploy
+#### 6.5 Backend Cloud Run Deploy
 
 ```bash
-gcloud run deploy $SERVICE_NAME \
-  --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:latest \
+gcloud run deploy nora-backend \
+  --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/nora-backend:latest \
   --region $REGION \
   --allow-unauthenticated \
   --add-cloudsql-instances $CONNECTION_NAME \
+  --session-affinity \
+  --timeout=3600 \
   --set-env-vars NODE_ENV=production,PORT=8080,GOOGLE_GENAI_USE_VERTEXAI=FALSE,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=$REGION,GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025,GEMINI_TEXT_MODEL=gemini-2.5-flash,GEMINI_IMAGE_MODEL=gemini-2.0-flash-preview-image-generation,GEMINI_STORY_MODEL=gemini-3.1-flash-lite-preview,IMAGEN_MODEL=imagen-4.0-fast-generate-001,DATABASE_URL=postgresql://nora_user:CHANGE_ME_STRONG_PASSWORD@/cognitive_agent?host=/cloudsql/$CONNECTION_NAME\&schema=public \
   --set-secrets GOOGLE_API_KEY=GOOGLE_API_KEY:latest,JWT_SECRET=JWT_SECRET:latest,GEMINI_IMAGE_API_KEY=GEMINI_IMAGE_API_KEY:latest
 ```
 
-Deploy sonrası health kontrolü:
+#### 6.6 Frontend Cloud Run Deploy
 
 ```bash
-SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')
-curl "$SERVICE_URL/api/health"
+BACKEND_URL=$(gcloud run services describe nora-backend --region=$REGION --format='value(status.url)')
+
+gcloud run deploy nora-frontend \
+  --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/nora-frontend:latest \
+  --region $REGION \
+  --allow-unauthenticated \
+  --port=80 \
+  --set-env-vars "BACKEND_URL=$BACKEND_URL"
 ```
 
-## 7. Google Cloud Deployment Proof (Yarışma Teslimi)
+#### 6.7 CORS Güncelle
 
-Yarışma şartı: backend'in Google Cloud üzerinde çalıştığını kanıtlamalısınız.
+```bash
+FRONTEND_URL=$(gcloud run services describe nora-frontend --region=$REGION --format='value(status.url)')
+gcloud run services update nora-backend --region $REGION --update-env-vars "FRONTEND_URL=$FRONTEND_URL"
+```
 
-### Önerilen Proof İçeriği (1-2 dakikalık kısa kayıt)
+</details>
 
-1. Cloud Run service listesinde `nora-backend` servisinin göründüğünü gösterin.
-2. Service detayında son revision ve URL'yi gösterin.
-3. Cloud Logging ekranında backend loglarını canlı gösterin.
-4. Tarayıcı veya terminalden `GET /api/health` çağrısının `200` döndüğünü gösterin.
-5. (Opsiyonel ama güçlü kanıt) Cloud SQL instance + bağlantı konfigürasyonunu gösterin.
+### Deploy Edilmiş Servisler
 
-### README'de Bulunması Gereken Teslim Linkleri
+| Servis | URL | Status |
+|---|---|---|
+| **Frontend** | https://nora-frontend-806414321712.us-central1.run.app | ✅ Active |
+| **Backend** | https://nora-backend-806414321712.us-central1.run.app | ✅ Active |
+| **Health Check** | https://nora-backend-806414321712.us-central1.run.app/api/health | ✅ 200 OK |
 
-- Public repo URL: `PASTE_PUBLIC_REPO_URL`
-- Demo video (<4 dk): `PASTE_DEMO_VIDEO_URL`
-- Google Cloud proof video: `PASTE_GCP_PROOF_VIDEO_URL`
+---
 
-## 8. Demonstration Video Checklist (< 4 dakika)
+## 🔐 Güvenlik ve Tasarım Kararları
 
-- Gerçek zamanlı sesli etkileşimi canlı gösterin (mockup değil).
-- Görsel üretim ve kamera analizi akışını canlı gösterin.
-- Çözdüğünüz problemi ve ürün değerini kısa, net anlatın.
+| Karar | Açıklama |
+|---|---|
+| **Deterministik Skorlama** | LLM skor hesaplamaz; tüm puanlar backend'de algoritmik olarak hesaplanır |
+| **JWT Authentication** | Token-based auth, rate limiting uygulanır |
+| **Input Validation** | express-validator ile tüm girdiler doğrulanır |
+| **Tool Calling Sanitization** | Live session stabilitesi için araç çağrısı sonuçları sanitize edilir |
 
-## 9. Güvenlik ve Mimari Notlar
+---
 
-- LLM skor hesaplamaz; skorlar backend'de deterministik hesaplanır.
-- JWT auth, rate-limit, helmet, input validation uygulanır.
-- Tool calling sonuçları sanitize edilerek Live session stabilitesi korunur.
+## 📄 Lisans
 
-## 10. Lisans
-
-Bu proje Gemini Hackathon için geliştirilmiştir.
+Bu proje **Gemini Hackathon 2026** için geliştirilmiştir.

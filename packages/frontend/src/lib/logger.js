@@ -21,7 +21,8 @@ const COLORS = {
 };
 
 // Backend log endpoint'i
-const LOG_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
+const LOG_ENDPOINT = `${API_BASE_URL}/logs`;
 const ENABLE_REMOTE_LOG = import.meta.env.VITE_ENABLE_REMOTE_LOG === 'true';
 
 function formatTimestamp() {
@@ -33,7 +34,7 @@ async function sendToBackend(level, module, message, data) {
   if (!ENABLE_REMOTE_LOG) return;
   
   try {
-    await fetch(`${LOG_API_URL}/api/logs`, {
+    await fetch(LOG_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

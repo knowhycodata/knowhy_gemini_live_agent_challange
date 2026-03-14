@@ -16,11 +16,14 @@ RUN npx prisma generate
 # Uygulama kodunu kopyala
 COPY src ./src
 
-# Sağlık kontrolü
+# Cloud Run PORT env var kullanır (varsayılan 8080), lokal docker-compose için 3001
+ENV PORT=8080
+
+# Sağlık kontrolü - PORT env var'ı kullan
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3001/api/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT}/api/health || exit 1
 
-EXPOSE 3001
+EXPOSE ${PORT}
 
-# Migration ve başlatma
-CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]
+# Migration, seed ve başlatma
+CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && node src/index.js"]

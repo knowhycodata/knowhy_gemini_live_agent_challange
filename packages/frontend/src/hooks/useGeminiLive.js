@@ -8,8 +8,29 @@ import { createLogger } from '../lib/logger';
 
 const log = createLogger('useGeminiLive');
 
-const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:3001/ws/live`;
-log.info('WebSocket URL', { url: WS_URL });
+function resolveWsUrl() {
+  const envWsUrl = import.meta.env.VITE_WS_URL;
+  if (envWsUrl && envWsUrl.trim().length > 0) {
+    return envWsUrl.trim();
+  }
+
+  const apiBase = import.meta.env.VITE_API_URL || '/api';
+  try {
+    const apiUrl = new URL(apiBase, window.location.origin);
+    const wsProtocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${wsProtocol}//${apiUrl.host}/ws/live`;
+  } catch (error) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/ws/live`;
+  }
+}
+
+const WS_URL = resolveWsUrl();
+log.info('WebSocket URL', {
+  url: WS_URL,
+  envWsUrl: import.meta.env.VITE_WS_URL || null,
+  apiBase: import.meta.env.VITE_API_URL || '/api',
+});
 
 export const SESSION_STATES = {
   IDLE: 'idle',

@@ -96,13 +96,6 @@ export default function Login() {
           >
             {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
           </button>
-
-          <p className="text-center text-sm text-gray-400">
-            Hesabınız yok mu?{' '}
-            <Link to="/register" className="font-medium text-gray-900 hover:text-gray-700">
-              Kayıt Ol
-            </Link>
-          </p>
         </form>
       </div>
     </div>

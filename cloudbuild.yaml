@@ -1,0 +1,125 @@
+# ═══════════════════════════════════════════════════════════════════
+# Nöra - Cloud Build CI/CD Pipeline
+# Kullanım: gcloud builds submit --config=cloudbuild.yaml .
+# Veya: Cloud Build trigger ile otomatik tetiklenir
+# ═══════════════════════════════════════════════════════════════════
+substitutions:
+  _REGION: us-central1
+  _REPO_NAME: nora-repo
+  _BACKEND_SERVICE: nora-backend
+  _FRONTEND_SERVICE: nora-frontend
+  _SQL_INSTANCE: nora-pg
+
+steps:
+  # ─── 1. Backend Image Build ───
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-backend'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-backend:${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-backend:latest'
+      - './packages/backend'
+
+  # ─── 2. Frontend Image Build ───
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-frontend'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-frontend:${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-frontend:latest'
+      - './packages/frontend'
+
+  # ─── 3. Push Backend Image ───
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-backend'
+    waitFor: ['build-backend']
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-backend'
+
+  # ─── 4. Push Frontend Image ───
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-frontend'
+    waitFor: ['build-frontend']
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-frontend'
+
+  # ─── 5. Deploy Backend to Cloud Run ───
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-backend'
+    waitFor: ['push-backend']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        CONNECTION_NAME=$$(gcloud sql instances describe ${_SQL_INSTANCE} --format='value(connectionName)' 2>/dev/null || echo "")
+        
+        gcloud run deploy ${_BACKEND_SERVICE} \
+          --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-backend:${SHORT_SHA} \
+          --region ${_REGION} \
+          --platform managed \
+          --allow-unauthenticated \
+          --session-affinity \
+          --min-instances=0 \
+          --max-instances=4 \
+          --memory=512Mi \
+          --cpu=1 \
+          --timeout=3600 \
+          $${CONNECTION_NAME:+--add-cloudsql-instances $$CONNECTION_NAME} \
+          --set-secrets "GOOGLE_API_KEY=GOOGLE_API_KEY:latest,JWT_SECRET=JWT_SECRET:latest,GEMINI_IMAGE_API_KEY=GEMINI_IMAGE_API_KEY:latest" \
+          --quiet
+
+  # ─── 6. Deploy Frontend to Cloud Run ───
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-frontend'
+    waitFor: ['push-frontend', 'deploy-backend']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_SERVICE} --region=${_REGION} --format='value(status.url)')
+        
+        gcloud run deploy ${_FRONTEND_SERVICE} \
+          --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-frontend:${SHORT_SHA} \
+          --region ${_REGION} \
+          --platform managed \
+          --allow-unauthenticated \
+          --min-instances=0 \
+          --max-instances=2 \
+          --memory=256Mi \
+          --port=80 \
+          --set-env-vars "BACKEND_URL=$$BACKEND_URL" \
+          --quiet
+
+  # ─── 7. Backend CORS güncelle ───
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'update-cors'
+    waitFor: ['deploy-frontend']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        FRONTEND_URL=$$(gcloud run services describe ${_FRONTEND_SERVICE} --region=${_REGION} --format='value(status.url)')
+        gcloud run services update ${_BACKEND_SERVICE} \
+          --region ${_REGION} \
+          --update-env-vars "FRONTEND_URL=$$FRONTEND_URL" \
+          --quiet
+
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-backend:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-backend:latest'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-frontend:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/nora-frontend:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+timeout: '1800s'
