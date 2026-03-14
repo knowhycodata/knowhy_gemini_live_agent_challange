@@ -23,6 +23,8 @@ services:
       dockerfile: Dockerfile
     container_name: cognitive_backend
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - '3001:3001'
     environment:
@@ -30,7 +32,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/cognitive_agent?schema=public
       JWT_SECRET: ${JWT_SECRET:-nora-cognitive-agent-jwt-secret-2025-hackathon}
-      JWT_EXPIRES_IN: 7d
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       GOOGLE_GENAI_USE_VERTEXAI: ${GOOGLE_GENAI_USE_VERTEXAI:-FALSE}
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT}
@@ -39,6 +41,9 @@ services:
       GEMINI_LIVE_MODEL: ${GEMINI_LIVE_MODEL}
       GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL}
       GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL}
+      GEMINI_STORY_MODEL: ${GEMINI_STORY_MODEL:-gemini-3.1-flash-lite-preview}
+      GEMINI_IMAGE_API_KEY: ${GEMINI_IMAGE_API_KEY}
+      IMAGEN_MODEL: ${IMAGEN_MODEL:-imagen-4.0-fast-generate-001}
       LIVE_VOICE_NAME: ${LIVE_VOICE_NAME:-Puck}
       FRONTEND_URL: http://localhost:5173
     depends_on:

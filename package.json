@@ -1,7 +1,7 @@
 {
-  "name": "gemini-cognitive-agent",
+  "name": "knowhy-gemini-challenge",
   "version": "1.0.0",
-  "description": "Alzheimer tespiti ve bilişsel tarama yapan AI Ajanı - Gemini Hackathon Live Agents",
+  "description": "Alzheimer tespiti ve bilişsel tarama yapan AI Ajanı - Gemini Hackathon Live Agents - www.knowhy.co",
   "private": true,
   "workspaces": [
     "packages/frontend",
