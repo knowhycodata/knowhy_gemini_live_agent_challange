@@ -13,10 +13,11 @@ const authRoutes = require('./routes/auth');
 const sessionRoutes = require('./routes/sessions');
 const testRoutes = require('./routes/tests');
 const { GeminiLiveSession } = require('./services/geminiLive');
-const { handleToolCall, registerGeminiSession, unregisterGeminiSession, registerVisualTestAgent, unregisterVisualTestAgent, registerVideoAnalysisAgent, unregisterVideoAnalysisAgent, getVideoAnalysisAgent, registerDateTimeAgent, unregisterDateTimeAgent } = require('./services/toolHandler');
+const { handleToolCall, registerGeminiSession, unregisterGeminiSession, registerVisualTestAgent, unregisterVisualTestAgent, registerVideoAnalysisAgent, unregisterVideoAnalysisAgent, getVideoAnalysisAgent, registerCameraPresenceAgent, unregisterCameraPresenceAgent, getCameraPresenceAgent, registerBrainAgent, unregisterBrainAgent, registerDateTimeAgent, unregisterDateTimeAgent } = require('./services/toolHandler');
 const { BrainAgent } = require('./services/brainAgent');
 const { VisualTestAgent } = require('./services/visualTestAgent');
 const { VideoAnalysisAgent } = require('./services/videoAnalysisAgent');
+const { CameraPresenceAgent } = require('./services/cameraPresenceAgent');
 const { DateTimeAgent } = require('./services/dateTimeAgent');
 const prisma = require('./lib/prisma');
 
@@ -146,6 +147,7 @@ wss.on('connection', async (ws, req) => {
               }
             );
             geminiSession.brainAgent = brainAgent;
+            registerBrainAgent(testSessionId, brainAgent);
             
             // VisualTestAgent oluştur - Test 3 koordinasyonu
             const visualTestAgent = new VisualTestAgent(
@@ -185,6 +187,22 @@ wss.on('connection', async (ws, req) => {
               }
             );
             registerVideoAnalysisAgent(testSessionId, videoAnalysisAgent);
+
+            // CameraPresenceAgent oluştur - Test 4 kadraj takibi / müdahale
+            const cameraPresenceAgent = new CameraPresenceAgent(
+              testSessionId,
+              (data) => {
+                if (ws.readyState === 1) {
+                  ws.send(JSON.stringify(data));
+                }
+              },
+              (text) => {
+                if (geminiSession) {
+                  geminiSession.sendText(text);
+                }
+              }
+            );
+            registerCameraPresenceAgent(testSessionId, cameraPresenceAgent);
             
             // DateTimeAgent oluştur - Test 4 tarih/saat doğrulama
             const dateTimeAgent = new DateTimeAgent(testSessionId);
@@ -224,9 +242,17 @@ wss.on('connection', async (ws, req) => {
             if (testSessionId && message.frameData) {
               const videoAgent = getVideoAnalysisAgent(testSessionId);
               if (videoAgent && videoAgent.isActive) {
-                videoAgent.analyzeFrame(message.frameData).catch(err => {
-                  log.error('Video frame analiz hatası', { clientId, error: err.message });
-                });
+                videoAgent.analyzeFrame(message.frameData)
+                  .then((analysis) => {
+                    if (!analysis) return;
+                    const presenceAgent = getCameraPresenceAgent(testSessionId);
+                    if (presenceAgent && presenceAgent.isActive) {
+                      presenceAgent.observeAnalysis(analysis);
+                    }
+                  })
+                  .catch(err => {
+                    log.error('Video frame analiz hatası', { clientId, error: err.message });
+                  });
               }
             }
             break;
@@ -239,6 +265,8 @@ wss.on('connection', async (ws, req) => {
               unregisterGeminiSession(testSessionId);
               unregisterVisualTestAgent(testSessionId);
               unregisterVideoAnalysisAgent(testSessionId);
+              unregisterCameraPresenceAgent(testSessionId);
+              unregisterBrainAgent(testSessionId);
               unregisterDateTimeAgent(testSessionId);
               geminiSession = null;
             }
@@ -276,6 +304,8 @@ wss.on('connection', async (ws, req) => {
       activeSessions.delete(testSessionId);
       unregisterVisualTestAgent(testSessionId);
       unregisterVideoAnalysisAgent(testSessionId);
+      unregisterCameraPresenceAgent(testSessionId);
+      unregisterBrainAgent(testSessionId);
       unregisterDateTimeAgent(testSessionId);
     }
   });
@@ -287,6 +317,8 @@ wss.on('connection', async (ws, req) => {
       activeSessions.delete(testSessionId);
       unregisterVisualTestAgent(testSessionId);
       unregisterVideoAnalysisAgent(testSessionId);
+      unregisterCameraPresenceAgent(testSessionId);
+      unregisterBrainAgent(testSessionId);
       unregisterDateTimeAgent(testSessionId);
     }
   });

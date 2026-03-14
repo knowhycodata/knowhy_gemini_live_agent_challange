@@ -26,6 +26,12 @@ const visualTestAgents = new Map(); // sessionId -> VisualTestAgent
 // Video Analysis Agent referansları (session bazlı)
 const videoAnalysisAgents = new Map(); // sessionId -> VideoAnalysisAgent
 
+// Camera Presence Agent referansları (session bazlı)
+const cameraPresenceAgents = new Map(); // sessionId -> CameraPresenceAgent
+
+// Brain Agent referansları (session bazlı)
+const brainAgents = new Map(); // sessionId -> BrainAgent
+
 // DateTime Agent referansları (session bazlı)
 const dateTimeAgents = new Map(); // sessionId -> DateTimeAgent
 
@@ -56,6 +62,34 @@ function unregisterVideoAnalysisAgent(sessionId) {
 
 function getVideoAnalysisAgent(sessionId) {
   return videoAnalysisAgents.get(sessionId);
+}
+
+// Camera Presence Agent kayıt işlemleri
+function registerCameraPresenceAgent(sessionId, agent) {
+  cameraPresenceAgents.set(sessionId, agent);
+}
+
+function unregisterCameraPresenceAgent(sessionId) {
+  const agent = cameraPresenceAgents.get(sessionId);
+  if (agent) agent.destroy();
+  cameraPresenceAgents.delete(sessionId);
+}
+
+function getCameraPresenceAgent(sessionId) {
+  return cameraPresenceAgents.get(sessionId);
+}
+
+// Brain Agent kayıt işlemleri
+function registerBrainAgent(sessionId, agent) {
+  brainAgents.set(sessionId, agent);
+}
+
+function unregisterBrainAgent(sessionId) {
+  brainAgents.delete(sessionId);
+}
+
+function getBrainAgent(sessionId) {
+  return brainAgents.get(sessionId);
 }
 
 // DateTime Agent kayıt işlemleri
@@ -351,7 +385,16 @@ async function handleStartVideoAnalysis({ sessionId }) {
     };
   }
 
-  return agent.startAnalysis();
+  const presenceAgent = cameraPresenceAgents.get(sessionId);
+  if (presenceAgent) {
+    presenceAgent.startMonitoring();
+  }
+
+  const result = agent.startAnalysis();
+  return {
+    ...result,
+    presenceMonitoring: !!presenceAgent,
+  };
 }
 
 async function handleStopVideoAnalysis({ sessionId }) {
@@ -363,36 +406,14 @@ async function handleStopVideoAnalysis({ sessionId }) {
   }
 
   const result = agent.stopAnalysis();
-  
-  // Analiz sonuçlarını veritabanına kaydet
-  if (result.summary) {
-    try {
-      await prisma.testResult.upsert({
-        where: { sessionId_testType: { sessionId, testType: 'VIDEO_ANALYSIS' } },
-        update: {
-          rawData: { analyses: result.analyses, summary: result.summary },
-          score: 0, // Video analizi skorlanmaz, gözlem amaçlıdır
-          maxScore: 0,
-          details: result.summary,
-        },
-        create: {
-          sessionId,
-          testType: 'VIDEO_ANALYSIS',
-          rawData: { analyses: result.analyses, summary: result.summary },
-          score: 0,
-          maxScore: 0,
-          details: result.summary,
-        },
-      });
-    } catch (dbError) {
-      log.error('Video analiz DB kayıt hatası', { sessionId, error: dbError.message });
-    }
-  }
+  const presenceAgent = cameraPresenceAgents.get(sessionId);
+  const presenceSummary = presenceAgent ? presenceAgent.stopMonitoring() : null;
 
   return {
     success: true,
     message: `Video analizi tamamlandı. ${result.totalAnalyses} kare analiz edildi.`,
     summary: result.summary,
+    presenceSummary,
   };
 }
 
@@ -436,7 +457,36 @@ async function handleVerifyOrientationAnswer({ sessionId, questionType, userAnsw
     dateTimeAgents.set(sessionId, agent);
   }
 
-  const verification = agent.verifyOrientationAnswer(questionType, userAnswer, context || {});
+  // LLM'in kendi basina cevap uydurmasini engellemek icin gercek user transkriptini zorunlu kil.
+  const brainAgent = brainAgents.get(sessionId);
+  let effectiveUserAnswer = userAnswer;
+
+  if (brainAgent && typeof brainAgent.consumeOrientationUserInput === 'function') {
+    const realUserInput = brainAgent.consumeOrientationUserInput(15000);
+    if (!realUserInput) {
+      log.warn('verify_orientation_answer engellendi - taze user cevabi yok', {
+        sessionId,
+        questionType,
+      });
+      if (typeof brainAgent.sendTextToLive === 'function') {
+        brainAgent.sendTextToLive(
+          'ORIENTATION_GUARD: Henüz kullanıcıdan cevap gelmedi. ' +
+          'Soruyu tekrar sor, sonra kullanıcı cevabını bekle. ' +
+          'Cevap almadan verify_orientation_answer çağırma.'
+        );
+      }
+      return {
+        success: false,
+        blocked: true,
+        reason: 'NO_FRESH_USER_ANSWER',
+        questionType,
+        message: 'Henüz kullanıcıdan net bir cevap alınmadı. Soruyu tekrar sor ve kullanıcının cevabını bekle.',
+      };
+    }
+    effectiveUserAnswer = realUserInput;
+  }
+
+  const verification = agent.verifyOrientationAnswer(questionType, effectiveUserAnswer, context || {});
   return {
     success: true,
     ...verification,
@@ -489,6 +539,12 @@ module.exports = {
   registerVideoAnalysisAgent,
   unregisterVideoAnalysisAgent,
   getVideoAnalysisAgent,
+  registerCameraPresenceAgent,
+  unregisterCameraPresenceAgent,
+  getCameraPresenceAgent,
+  registerBrainAgent,
+  unregisterBrainAgent,
+  getBrainAgent,
   registerDateTimeAgent,
   unregisterDateTimeAgent,
   getDateTimeAgent,

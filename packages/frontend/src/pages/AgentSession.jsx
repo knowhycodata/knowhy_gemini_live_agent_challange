@@ -9,7 +9,7 @@ import { useGeminiLive, SESSION_STATES } from '../hooks/useGeminiLive';
 import { createLogger } from '../lib/logger';
 import TranscriptPanel from '../components/TranscriptPanel';
 import GeneratedImagePanel from '../components/GeneratedImagePanel';
-import CameraPanel from '../components/CameraPanel';
+import CameraModal from '../components/CameraModal';
 
 const log = createLogger('AgentSession');
 
@@ -304,18 +304,6 @@ export default function AgentSession() {
 
             {/* Görsel üretimi artık fullscreen modal olarak gösteriliyor — aşağıda render ediliyor */}
 
-            {/* Kamera paneli - Test 4 sırasında */}
-            {gemini.cameraActive && (
-              <div className="mt-6 mb-4 w-full max-w-sm mx-auto">
-                <CameraPanel
-                  isActive={gemini.cameraActive}
-                  cameraCommand={gemini.cameraCommand}
-                  analysisResult={gemini.videoAnalysisResult}
-                  onSendFrame={gemini.sendVideoFrame}
-                  onClose={null}
-                />
-              </div>
-            )}
           </div>
         )}
 
@@ -380,6 +368,16 @@ export default function AgentSession() {
           onClose={() => {}}
         />
       )}
+
+      {/* ─── Test 4 Kamera Modal ─── */}
+      <CameraModal
+        isOpen={gemini.cameraActive}
+        cameraCommand={gemini.cameraCommand}
+        analysisResult={gemini.videoAnalysisResult}
+        onSendFrame={gemini.sendVideoFrame}
+        presenceAlert={gemini.cameraPresence}
+        onClose={null}
+      />
     </div>
   );
 }

@@ -21,21 +21,34 @@ export default function CameraPanel({
   cameraCommand, 
   analysisResult, 
   onSendFrame,
-  onClose 
+  onClose,
+  variant = 'inline',
+  presenceAlert = null,
 }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
+  const startCameraPromiseRef = useRef(null);
   
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [zoom, setZoom] = useState(1.0);
   const [permissionAsked, setPermissionAsked] = useState(false);
   const [lastAnalysis, setLastAnalysis] = useState(null);
+  const isModal = variant === 'modal';
 
   // Kamera aç
   const startCamera = useCallback(async () => {
+    if (startCameraPromiseRef.current) {
+      return startCameraPromiseRef.current;
+    }
+
+    if (streamRef.current && cameraReady) {
+      return Promise.resolve();
+    }
+
+    startCameraPromiseRef.current = (async () => {
     try {
       setCameraError(null);
       setPermissionAsked(true);
@@ -53,10 +66,21 @@ export default function CameraPanel({
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          // React effect race durumunda ikinci srcObject set'i play() promise'ini iptal edebilir.
+          if (playErr?.name !== 'AbortError') {
+            throw playErr;
+          }
+          console.warn('Kamera play() AbortError - yeni kaynak yukleniyor, yeniden denenecek.');
+        }
         setCameraReady(true);
       }
     } catch (err) {
+      if (err?.name === 'AbortError') {
+        return;
+      }
       console.error('Kamera hatası:', err);
       setCameraError(
         err.name === 'NotAllowedError' 
@@ -64,7 +88,12 @@ export default function CameraPanel({
           : 'Kamera açılamadı: ' + err.message
       );
     }
-  }, []);
+    })().finally(() => {
+      startCameraPromiseRef.current = null;
+    });
+
+    return startCameraPromiseRef.current;
+  }, [cameraReady]);
 
   // Kamera kapat
   const stopCamera = useCallback(() => {
@@ -79,6 +108,7 @@ export default function CameraPanel({
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+    startCameraPromiseRef.current = null;
     setCameraReady(false);
   }, []);
 
@@ -194,8 +224,14 @@ export default function CameraPanel({
   if (!isActive) return null;
 
   return (
-    <div className="animate-slide-up">
-      <div className="bg-white/95 backdrop-blur rounded-2xl border border-gray-100 shadow-lg overflow-hidden">
+    <div className={`animate-slide-up ${isModal ? 'w-full' : ''}`}>
+      <div
+        className={`overflow-hidden ${
+          isModal
+            ? 'bg-white rounded-2xl border border-slate-200 shadow-[0_26px_90px_rgba(15,23,42,0.28)]'
+            : 'bg-white/95 backdrop-blur rounded-2xl border border-gray-100 shadow-lg'
+        }`}
+      >
         {/* Başlık */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50">
           <div className="flex items-center gap-2">
@@ -244,8 +280,23 @@ export default function CameraPanel({
           </div>
         </div>
 
+        {/* Kadraj takip uyarısı */}
+        {presenceAlert?.message && (
+          <div
+            className={`px-4 py-2 border-b text-xs ${
+              presenceAlert.status === 'alert'
+                ? 'bg-red-50 border-red-100 text-red-700'
+                : presenceAlert.status === 'recovered'
+                ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                : 'bg-slate-50 border-slate-100 text-slate-600'
+            }`}
+          >
+            {presenceAlert.message}
+          </div>
+        )}
+
         {/* Video alanı */}
-        <div className="relative bg-gray-900 aspect-video max-h-48 overflow-hidden">
+        <div className={`relative bg-gray-900 aspect-video overflow-hidden ${isModal ? 'max-h-[60vh]' : 'max-h-48'}`}>
           {cameraError ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

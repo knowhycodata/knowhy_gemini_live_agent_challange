@@ -44,6 +44,10 @@ class BrainAgent {
     this.userBuffer = '';      // Son user transkriptlerini birleştirir
     this.bufferResetTimeout = null;
     this.BUFFER_WINDOW_MS = 5000; // 5 saniyelik pencere
+
+    // Test 4: Gercek kullanici cevabini yakalamak icin orientation buffer
+    this.orientationUserInputBuffer = '';
+    this.orientationLastUserAt = 0;
     
     log.info('BrainAgent oluşturuldu', { sessionId });
   }
@@ -62,6 +66,12 @@ class BrainAgent {
       this.agentBuffer += ' ' + cleanText;
     } else {
       this.userBuffer += ' ' + cleanText;
+
+      // Test 4 aktifken gelen gercek user transkriptlerini biriktir
+      if (this.testPhase === 'ORIENTATION_ACTIVE') {
+        this.orientationUserInputBuffer += ' ' + cleanText;
+        this.orientationLastUserAt = Date.now();
+      }
     }
     
     log.info('Transkript', { 
@@ -378,6 +388,8 @@ class BrainAgent {
     if (this._containsAny(agentBuf, orientKeywords) || this._containsAny(text, orientKeywords)) {
       log.info('Faz geçişi: VISUAL_TEST_DONE → ORIENTATION_ACTIVE', { sessionId: this.sessionId });
       this.testPhase = 'ORIENTATION_ACTIVE';
+      this.orientationUserInputBuffer = '';
+      this.orientationLastUserAt = 0;
       
       // Frontend'e Test 4 başladığını bildir
       this.sendToClient({
@@ -427,7 +439,29 @@ class BrainAgent {
     if (this.videoAnalysisAgent) {
       this.videoAnalysisAgent = null;
     }
+    this.orientationUserInputBuffer = '';
+    this.orientationLastUserAt = 0;
     log.info('BrainAgent temizlendi', { sessionId: this.sessionId });
+  }
+
+  /**
+   * Test 4 icin birikmis kullanici cevabini al ve buffer'i temizle.
+   * Tool call halusinasyonunu engellemek icin kullanilir.
+   */
+  consumeOrientationUserInput(maxAgeMs = 15000) {
+    const now = Date.now();
+    const text = this.orientationUserInputBuffer.trim();
+
+    if (!text) return null;
+    if (!this.orientationLastUserAt || now - this.orientationLastUserAt > maxAgeMs) {
+      this.orientationUserInputBuffer = '';
+      this.orientationLastUserAt = 0;
+      return null;
+    }
+
+    this.orientationUserInputBuffer = '';
+    this.orientationLastUserAt = 0;
+    return text;
   }
 
   _containsAny(text, keywords) {

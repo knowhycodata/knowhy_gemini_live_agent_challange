@@ -44,6 +44,7 @@ export function useGeminiLive() {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraCommand, setCameraCommand] = useState(null);
   const [videoAnalysisResult, setVideoAnalysisResult] = useState(null);
+  const [cameraPresence, setCameraPresence] = useState(null);
 
   const wsRef = useRef(null);
   const stateRef = useRef(state);
@@ -492,6 +493,7 @@ export function useGeminiLive() {
         } else if (message.command === 'stop') {
           setCameraActive(false);
           setVideoAnalysisResult(null);
+          setCameraPresence(null);
         }
         break;
 
@@ -501,6 +503,33 @@ export function useGeminiLive() {
           attention: message.analysis?.attentionLevel,
         });
         setVideoAnalysisResult(message.analysis);
+        break;
+
+      case 'camera_presence_status':
+        setCameraPresence({
+          status: message.status || 'monitoring',
+          level: message.level || 'info',
+          message: message.message || 'Kamera takibi aktif.',
+          timestamp: Date.now(),
+        });
+        break;
+
+      case 'camera_presence_alert':
+        setCameraPresence({
+          status: 'alert',
+          level: message.level || 'warning',
+          message: message.message || 'Yüzünüz kamerada görünmüyor, lütfen kadraja geri dönün.',
+          timestamp: Date.now(),
+        });
+        break;
+
+      case 'camera_presence_recovered':
+        setCameraPresence({
+          status: 'recovered',
+          level: message.level || 'info',
+          message: message.message || 'Tekrar kadrajdasınız, teşekkürler.',
+          timestamp: Date.now(),
+        });
         break;
 
       case 'error':
@@ -593,7 +622,7 @@ export function useGeminiLive() {
         log.warn('READY state but WebSocket not open', { readyState: ws?.readyState });
       }
     }
-  }, [state, startMic]);
+  }, [state]);
 
   const sendText = useCallback((text) => {
     const ws = wsRef.current;
@@ -648,6 +677,7 @@ export function useGeminiLive() {
     setCameraActive(false);
     setCameraCommand(null);
     setVideoAnalysisResult(null);
+    setCameraPresence(null);
   }, [stopMic, clearAudioBuffer]);
   
   // Timer countdown efekti
@@ -692,6 +722,7 @@ export function useGeminiLive() {
     cameraActive,
     cameraCommand,
     videoAnalysisResult,
+    cameraPresence,
     connectAndStart,
     sendText,
     sendVideoFrame,
