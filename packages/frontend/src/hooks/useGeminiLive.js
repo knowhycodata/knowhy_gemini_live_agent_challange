@@ -48,7 +48,11 @@ export function useGeminiLive() {
   const wsRef = useRef(null);
   const stateRef = useRef(state);
   const recorderCtxRef = useRef(null);
+  const recorderNodeRef = useRef(null);
+  const micSourceRef = useRef(null);
+  const micSilentGainRef = useRef(null);
   const micStreamRef = useRef(null);
+  const micFirstChunkLoggedRef = useRef(false);
   const playerCtxRef = useRef(null);
   const playerNodeRef = useRef(null);
   const micAnalyserRef = useRef(null);
@@ -93,6 +97,11 @@ export function useGeminiLive() {
   // ─── Audio: Mikrofon ────────────────────────────────────────────
   const startMic = useCallback(async () => {
     try {
+      if (recorderCtxRef.current && micStreamRef.current) {
+        log.debug('Mikrofon zaten aktif, yeniden başlatma atlandı');
+        return;
+      }
+
       log.info('Mikrofon başlatılıyor...');
       const ctx = new AudioContext({ sampleRate: 16000 });
       await ctx.audioWorklet.addModule('/audio/pcm-recorder-processor.js');
@@ -100,25 +109,44 @@ export function useGeminiLive() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
       const source = ctx.createMediaStreamSource(stream);
       const recorder = new AudioWorkletNode(ctx, 'pcm-recorder-processor');
+      const silentGain = ctx.createGain();
+      silentGain.gain.value = 0;
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.85;
       source.connect(recorder);
       source.connect(analyser);
+      recorder.connect(silentGain);
+      silentGain.connect(ctx.destination);
+
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
 
       recorder.port.onmessage = (e) => {
         const ws = wsRef.current;
         if (ws && ws.readyState === WebSocket.OPEN) {
+          if (!micFirstChunkLoggedRef.current) {
+            micFirstChunkLoggedRef.current = true;
+            log.info('Ilk mikrofon chunk gonderildi', { byteLength: e.data?.byteLength ?? 0 });
+          }
           ws.send(e.data);
         }
       };
 
       recorderCtxRef.current = ctx;
+      recorderNodeRef.current = recorder;
+      micSourceRef.current = source;
+      micSilentGainRef.current = silentGain;
       micStreamRef.current = stream;
       micAnalyserRef.current = analyser;
       micDataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
+      micFirstChunkLoggedRef.current = false;
       setIsRecording(true);
-      log.info('Mikrofon aktif');
+      log.info('Mikrofon aktif', {
+        trackCount: stream.getAudioTracks().length,
+        contextState: ctx.state,
+      });
     } catch (err) {
       log.error('Mikrofon hatası', { error: err.message });
       setError('Mikrofon izni alınamadı: ' + err.message);
@@ -126,6 +154,19 @@ export function useGeminiLive() {
   }, []);
 
   const stopMic = useCallback(() => {
+    if (recorderNodeRef.current) {
+      recorderNodeRef.current.port.onmessage = null;
+      recorderNodeRef.current.disconnect();
+      recorderNodeRef.current = null;
+    }
+    if (micSourceRef.current) {
+      micSourceRef.current.disconnect();
+      micSourceRef.current = null;
+    }
+    if (micSilentGainRef.current) {
+      micSilentGainRef.current.disconnect();
+      micSilentGainRef.current = null;
+    }
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach((t) => t.stop());
       micStreamRef.current = null;
@@ -136,6 +177,7 @@ export function useGeminiLive() {
     }
     micAnalyserRef.current = null;
     micDataArrayRef.current = null;
+    micFirstChunkLoggedRef.current = false;
     setIsRecording(false);
     setInputLevel(0);
   }, []);
@@ -232,6 +274,10 @@ export function useGeminiLive() {
 
       case 'connected':
         log.info('Gemini Live bağlandı');
+        if (!micStreamRef.current || !recorderCtxRef.current) {
+          log.warn('Connected event geldi ama mikrofon aktif degil, yeniden baslatiliyor');
+          startMic();
+        }
         setState(SESSION_STATES.LISTENING);
         break;
 
@@ -488,6 +534,10 @@ export function useGeminiLive() {
     log.info('Initializing audio player...');
     await initPlayer();
 
+    // 1.5 Mikrofonu user gesture akışında başlat (autoplay/policy sorunları için)
+    log.info('Initializing microphone...');
+    await startMic();
+
     // 2. WebSocket aç
     log.info('Opening WebSocket connection...', { url: WS_URL });
     const ws = new WebSocket(WS_URL);
@@ -527,7 +577,7 @@ export function useGeminiLive() {
       setError('WebSocket bağlantı hatası');
       setState(SESSION_STATES.ERROR);
     };
-  }, [initPlayer]);
+  }, [initPlayer, startMic]);
 
   // state READY olunca otomatik session başlat + mikrofon aç
   useEffect(() => {
@@ -536,10 +586,9 @@ export function useGeminiLive() {
     if (state === SESSION_STATES.READY) {
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
-        log.info('READY state: sending start_session + starting mic');
+        log.info('READY state: sending start_session');
         ws.send(JSON.stringify({ type: 'start_session' }));
         setState(SESSION_STATES.ACTIVE);
-        startMic();
       } else {
         log.warn('READY state but WebSocket not open', { readyState: ws?.readyState });
       }
